@@ -13,6 +13,11 @@ abbreviation "PO \<equiv> powerOn \<circ> machine"
 abbreviation "PO' \<equiv> powerOn \<circ> phantom_machine_state_''"
 abbreviation "corres \<equiv> \<lambda>rrel G G'. corres_underlying R False True rrel
                 (\<lambda>s. PO s \<and> G s) (\<lambda>s'. PO' s' \<and> G' s')"
+abbreviation "corres_off \<equiv> \<lambda>rrel G G'. corres_underlying R False True rrel
+                (\<lambda>s. \<not>PO s \<and> G s) (\<lambda>s'. \<not>PO' s' \<and> G' s')"
+
+lemma corres_off_valid: "\<And>rrel G G' m m'. corres_off rrel G G' m m'"
+unfolding R_def corres_underlying_def by auto
 
 (* FIXME: reason about size, value *)
 definition
@@ -29,7 +34,7 @@ locale sable_m = sable_verified +
 
       and get_nonce_corres: "corres (\<lambda>r r'. NONCE_rel r (fst r')) \<top> \<top> get_nonce get_nonce'"
 
-      and exit_corres: "\<And>P P' i. corres \<top>\<top> P P' exit (exit' i)"
+      and exit_corres: "\<And>P P'. corres \<top>\<top> P P' exit exit'"
 
       and TPM_PCRRead_corres: "\<And>i i'. PCRINDEX_rel i i' \<Longrightarrow>
         corres (\<lambda>r r'. TPM_PCRRead_rel r (fst r')) \<top> \<top> (TPM_PCRRead i) (TPM_PCRRead' i')"
@@ -42,5 +47,16 @@ locale sable_m = sable_verified +
         \<lbrakk>idx' = of_nat idx; off' = of_nat off\<rbrakk>
         \<Longrightarrow> corres (TPM_NV_ReadValue_rel StoredData_rel) P P' (TPM_NV_ReadValue idx off a)
         (TPM_NV_ReadValue' idx' off' size' ownerAuth' s')"
+
+context sable_m
+begin
+
+lemma exit: "\<lbrace>\<top>\<rbrace> exit \<lbrace>\<lambda>_ s. \<not>PO s\<rbrace>"
+unfolding exit_def apply wp
+
+lemma exit': "\<lbrace>\<top>\<rbrace> exit' \<lbrace>\<lambda>_ s'. \<not>PO' s'\<rbrace>"
+using exit_corres
+
+end
 
 end

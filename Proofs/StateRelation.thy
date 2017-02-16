@@ -19,7 +19,7 @@ where
 definition
   R :: "(astate \<times> lifted_globals) set"
 where
-  "R \<equiv> {(s, s'). (powerOn \<circ> machine) s \<and> (powerOn \<circ> phantom_machine_state_'') s' \<longrightarrow>
+  "R \<equiv> {(s, s'). (powerOn \<circ> machine) s \<and> (powerOn \<circ> phantom_machine_state_'') s' \<and>
        (let sess_deref = \<lambda>p'. heap_tdTPM_SESSION_C s' (heap_tdTPM_SESSION_C'ptr s' p') in
        let sess_valid = \<lambda>p'. is_valid_tdTPM_SESSION_C'ptr s' p' \<and> is_valid_tdTPM_SESSION_C s'
               (heap_tdTPM_SESSION_C'ptr s' p') in

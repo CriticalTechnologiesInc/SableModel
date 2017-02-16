@@ -18,7 +18,7 @@ proof -
                                           case x of Inl e \<Rightarrow> exit_r | Inr b \<Rightarrow> return b
                                          od)
        (do ret' \<leftarrow> (unknown >>= (\<lambda>au. TPM_NV_ReadValue' 4 0 0x190 (hasValue_C_update (\<lambda>_. 0) au) NULL));
-           (when (TPM_NV_ReadValue_ret_C.returnCode_C ret' \<noteq> 0) (exit' (TPM_NV_ReadValue_ret_C.returnCode_C ret')) >>=
+           (when (TPM_NV_ReadValue_ret_C.returnCode_C ret' \<noteq> 0) exit' >>=
            (\<lambda>_. unpack_TPM_STORED_DATA12' (TPM_NV_ReadValue_ret_C.data_C ret') (TPM_NV_ReadValue_ret_C.dataSize_C ret')))
         od)" (is "corres _ _ _ (?a >>= ?b) (?c >>= ?d)")
   proof -
@@ -47,14 +47,14 @@ proof -
         assume rv: "rv = Inl error"
         with G' have rv': "TPM_NV_ReadValue_ret_C.returnCode_C rv' \<noteq> 0"
           unfolding TPM_NV_ReadValue_rel_def ERROR_rel_def TPM_BASE_def by auto
-        have "corres \<top>\<top> \<top> \<top> exit (exit' (TPM_NV_ReadValue_ret_C.returnCode_C rv'))"
-          using exit_corres [where P=PO and P'=PO'] by auto
-        moreover have "corres read_passphrase_rel (\<lambda>s. \<not>(PO s))
-          (\<lambda>s'. ?r' rv (rv', s') \<and> \<not>(PO' s')) unknown
+        have "corres \<top>\<top> \<top> \<top> exit exit'" using exit_corres [where P=\<top> and P'=\<top>] by simp
+        moreover have "corres_off read_passphrase_rel (\<top>\<top> rv)
+          (\<lambda>s'. \<top>\<top> rv (rv', s') \<and> \<top> s') unknown
             (unpack_TPM_STORED_DATA12' (TPM_NV_ReadValue_ret_C.data_C rv')
              (TPM_NV_ReadValue_ret_C.dataSize_C rv'))"
-          by (simp add: corres_underlying_def)
-        moreover have "\<lbrace>\<top>\<rbrace> exit \<lbrace>\<rbrace>"
+          by (rule corres_off_valid)
+        moreover have "\<lbrace>\<top>\<rbrace> exit \<lbrace>\<lambda>_ s. \<not>PO s\<rbrace>" unfolding exit_def by (wp, auto)
+        moreover have "\<lbrace>\<top>\<rbrace> exit' \<lbrace>\<lambda>_ s'. \<not>PO' s'\<rbrace>" unfolding exit'_def apply wp
         have ?corres_b_d sorry}
       moreover
       { fix val

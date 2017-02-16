@@ -31,11 +31,27 @@ definition
 where
   "machine_op_lift m \<equiv>
    do
-    mstate \<leftarrow> gets machine;
-    (r, tpm_state') \<leftarrow> select_f (m mstate);
-    modify (\<lambda>s. s \<lparr> machine := mstate \<rparr>);
+    s \<leftarrow> gets machine;
+    (r, s') \<leftarrow> select_f (m s);
+    modify (\<lambda>s. s \<lparr> machine := s' \<rparr>);
     return r
    od"
+
+lemma machine_op_lift_wp[wp]:
+  "\<forall>ss. \<lbrace>\<lambda>s. P (ss\<lparr> machine := s \<rparr>)\<rbrace> m \<lbrace>\<lambda>r s'. Q r (ss\<lparr> machine := s' \<rparr>)\<rbrace>
+    \<Longrightarrow> \<lbrace>P\<rbrace> machine_op_lift m \<lbrace>Q\<rbrace>"
+  unfolding machine_op_lift_def apply wp unfolding valid_def
+proof -
+  fix s :: astate and r
+  let ?m_state = "machine s"
+  assume a: "\<forall>ss s. P (ss\<lparr>machine := s\<rparr>) \<longrightarrow> (\<forall>(r, s')\<in>fst (m s). Q r (ss\<lparr>machine := s'\<rparr>))"
+     and "P s"
+  have s: "s = s\<lparr>machine := ?m_state\<rparr>" by auto
+  with `P s` have "P (s\<lparr>machine := ?m_state\<rparr>)" by presburger
+  with a have "\<forall>(r, s')\<in>fst (m ?m_state). Q r (s\<lparr>machine := s'\<rparr>)" by blast
+  thus "\<forall>x\<in>fst (m (machine s)). (case x of (r, s') \<Rightarrow> \<lambda>s. Q r (s\<lparr>machine := s'\<rparr>)) s"
+    by auto
+qed
 
 definition "m_tpm_lift \<equiv> machine_op_lift \<circ> tpm_lift"
 

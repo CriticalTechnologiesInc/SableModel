@@ -172,7 +172,7 @@ TPM_COMPOSITE_HASH get_TPM_COMPOSITE_HASH(TPM_PCR_COMPOSITE comp);
 # 172 "/Users/scottconstable/Documents/SU_Graduate/SABLE/sable/build/include/sable_verified.h"
 const char *tpm_error_to_string(TPM_RESULT res);
 void wait(int ms);
-void exit(unsigned status)__attribute__((noreturn));
+void exit(void)__attribute__((noreturn));
 # 183 "/Users/scottconstable/Documents/SU_Graduate/SABLE/sable/build/include/sable_verified.h"
 typedef struct TPM_PCRRead_ret TPM_PCRRead_ret;
 struct TPM_PCRRead_ret {
@@ -222,10 +222,10 @@ TPM_PCR_INFO_LONG get_pcr_info(void) {
   TPM_PCR_SELECTION pcr_select = {.sizeOfSelect = 3,
                                   .pcrSelect = (BYTE *)pcr_select_bytes};
   struct TPM_PCRRead_ret pcr17 = TPM_PCRRead(17);
-  { if (pcr17.returnCode) { ; exit(pcr17.returnCode); } };
+  { if (pcr17.returnCode) { ; exit(); } };
   pcr_values[0] = pcr17.outDigest;
   struct TPM_PCRRead_ret pcr19 = TPM_PCRRead(19);
-  { if (pcr19.returnCode) { ; exit(pcr19.returnCode); } };
+  { if (pcr19.returnCode) { ; exit(); } };
   pcr_values[1] = pcr19.outDigest;
   TPM_PCR_COMPOSITE composite = {.select = pcr_select,
                                  .valueSize = 2 * sizeof(TPM_PCRVALUE),
@@ -249,7 +249,7 @@ TPM_STORED_DATA12 seal_passphrase(TPM_AUTHDATA srk_auth, TPM_AUTHDATA pp_auth,
 
   TPM_NONCE nonceOddOSAP = get_nonce();
   res = TPM_OSAP(((UINT16)0x0001), ((UINT32)0x40000000), nonceOddOSAP, &sessions[0]);
-  { if (res) { ; exit(res); } };
+  { if (res) { ; exit(); } };
   sessions[0]->nonceOdd = get_nonce();
   sessions[0]->continueAuthSession = 0x00;
 
@@ -268,7 +268,7 @@ TPM_STORED_DATA12 seal_passphrase(TPM_AUTHDATA srk_auth, TPM_AUTHDATA pp_auth,
   struct TPM_Seal_ret seal_ret =
       TPM_Seal(((UINT32)0x40000000), encAuth, pcr_info, (const BYTE *)passphrase,
                lenPassphrase, &sessions[0], sharedSecret);
-  { if (seal_ret.returnCode) { ; exit(seal_ret.returnCode); } };
+  { if (seal_ret.returnCode) { ; exit(); } };
 
   return seal_ret.sealedData;
 }
@@ -277,14 +277,14 @@ void write_passphrase(TPM_AUTHDATA nv_auth, TPM_STORED_DATA12 sealedData) {
   TPM_RESULT res;
 
   res = TPM_OIAP(&sessions[0]);
-  { if (res) { ; exit(res); } };
+  { if (res) { ; exit(); } };
   sessions[0]->nonceOdd = get_nonce();
   sessions[0]->continueAuthSession = 0x00;
 
   struct extracted_TPM_STORED_DATA12 x = extract_TPM_STORED_DATA12(sealedData);
   res =
       TPM_NV_WriteValueAuth(x.data, x.dataSize, 0x04, 0, nv_auth, &sessions[0]);
-  { if (res) { ; exit(res); } };
+  { if (res) { ; exit(); } };
 }
 
 void configure(void) {
@@ -320,7 +320,7 @@ TPM_STORED_DATA12 read_passphrase(void) {
 # 136 "/Users/scottconstable/Documents/SU_Graduate/SABLE/sable/src/sable_verified.c"
   nv_auth.hasValue = 0;
   val = TPM_NV_ReadValue(4, 0, 400, nv_auth, 0);
-  { if (val.returnCode) { ; exit(val.returnCode); } };
+  { if (val.returnCode) { ; exit(); } };
 
 
   return unpack_TPM_STORED_DATA12(val.data, val.dataSize);
@@ -331,18 +331,18 @@ const char *unseal_passphrase(TPM_AUTHDATA srk_auth, TPM_AUTHDATA pp_auth,
   TPM_RESULT res;
 
   res = TPM_OIAP(&sessions[0]);
-  { if (res) { ; exit(res); } };
+  { if (res) { ; exit(); } };
   sessions[0]->nonceOdd = get_nonce();
   sessions[0]->continueAuthSession = 0x00;
 
   res = TPM_OIAP(&sessions[1]);
-  { if (res) { ; exit(res); } };
+  { if (res) { ; exit(); } };
   sessions[1]->nonceOdd = get_nonce();
   sessions[1]->continueAuthSession = 0x00;
 
   TPM_Unseal_ret unseal_ret = TPM_Unseal(sealed_pp, ((UINT32)0x40000000), srk_auth,
                                          &sessions[0], pp_auth, &sessions[1]);
-  { if (unseal_ret.returnCode) { ; exit(unseal_ret.returnCode); } };
+  { if (unseal_ret.returnCode) { ; exit(); } };
 
   return (const char *)unseal_ret.data;
 }
