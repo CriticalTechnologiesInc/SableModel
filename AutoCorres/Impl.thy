@@ -2,10 +2,11 @@ theory Impl
 imports
   "../lib/ComExtensions"
   "../lib/NondetExtensions"
+  "../Abstract/AMonad"
 begin
 
 (* Parse the input file. *)
-install_C_file  "../src/sable_verified.cpp"
+install_C_file "../src/sable_verified.cpp" [machinety = machine_state]
 
 (* Abstract the input file. *)
 autocorres "../src/sable_verified.cpp"
@@ -27,23 +28,31 @@ locale sable = sable_verified
 begin
 
 definition
-  C_proc :: "(globals myvars, observable) data_type"
+  C_proc :: "(globals myvars, astate) data_type"
 where
   "C_proc \<equiv> \<lparr>
     Init = \<lambda>_. UNIV,
-    Fin = \<lambda>_. ({}, {}), 
+    Fin = \<lambda>s. \<lparr>
+        machine = phantom_machine_state_'' s,
+        sessions = empty_Session
+      \<rparr>,
     Run = lift_com (Call main_'proc) (all_global_addresses.\<Gamma> symbol_table)
   \<rparr>"
 
-abbreviation "main \<equiv> all.main' symbol_table :: (lifted_globals, int) nondet_monad"
+value "\<lambda>s :: lifted_globals. phantom_machine_state_'' s"
 
 definition
-  AC_proc :: "(lifted_globals, observable) data_type"
+  AC_proc :: "(lifted_globals, astate) data_type"
 where
   "AC_proc \<equiv> \<lparr>
-    Init = \<lambda>_. UNIV,
-    Fin = \<lambda>_. ({}, {}),
-    Run = lift_nd main
+    Init = \<lambda>_. {s. (let ms = phantom_machine_state_'' s in powerOn ms = True) \<and>
+        Ball (set (array_addrs (Ptr (symbol_table ''sessions'')) 2)) (\<lambda>p.
+        is_valid_tdTPM_SESSION_C'ptr s p \<and> heap_tdTPM_SESSION_C'ptr s p = NULL)},
+    Fin = \<lambda>s. \<lparr>
+        machine = phantom_machine_state_'' s,
+        sessions = empty_Session
+      \<rparr>,
+    Run = lift_nd trusted_boot'
   \<rparr>"
 
 end

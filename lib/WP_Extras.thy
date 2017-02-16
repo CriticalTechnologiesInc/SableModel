@@ -9,4 +9,7 @@ lemma exs_valid_modify[wp]: "\<lbrace>\<lambda>s. Q () (f s)\<rbrace> modify f \
   apply (auto simp add: exs_valid_def get_def put_def)
 done
 
+lemma non_fail_select': "no_fail P (select S)"
+unfolding no_fail_def select_def by auto
+
 end

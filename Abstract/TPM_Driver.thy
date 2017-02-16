@@ -9,10 +9,32 @@ where
   "TPM_PCRRead pcr \<equiv>
    doE
     command \<leftarrow> returnOk \<lparr> TPM.PCRRead_in.pcrIndex = pcr \<rparr>;
-    response \<leftarrow> liftE $ tpm_lift (TPM.PCRRead command);
+    response \<leftarrow> liftE $ m_tpm_lift (TPM.PCRRead command);
     case (TPM.PCRRead_out.returnCode response) of
       Inl error \<Rightarrow> throwError error
     | Inr () \<Rightarrow> returnOk (TPM.PCRRead_out.outDigest response)
+   odE"
+
+definition
+  TPM_OIAP :: "(ERROR + unit) s_monad"
+where
+  "TPM_OIAP \<equiv>
+   doE
+    response \<leftarrow> liftE $ m_tpm_lift TPM.OIAP;
+    case (TPM.OIAP_out.returnCode response) of
+      Inl error \<Rightarrow> throwError error
+    | Inr () \<Rightarrow> liftE $
+      do
+        nOdd \<leftarrow> unknown;
+        csession \<leftarrow> unknown;
+        modify (\<lambda>s. s\<lparr>
+        sessions := update_Session (sessions s) (TPM.OIAP_out.authHandle response)
+          \<lparr> nonceEven = TPM.OIAP_out.nonceEven response,
+            nonceOdd = nOdd,
+            continue = csession
+          \<rparr>
+        \<rparr>)
+      od
    odE"
 
 definition
@@ -45,7 +67,7 @@ where
       TPM.NV_ReadValue_in.offset = off,
       TPM.NV_ReadValue_in.ownerAuth = auth
     \<rparr>;
-    response \<leftarrow> liftE $ tpm_lift (TPM.NV_ReadValue command);
+    response \<leftarrow> liftE $ m_tpm_lift (TPM.NV_ReadValue command);
     ret \<leftarrow> case (TPM.NV_ReadValue_out.returnCode response) of
              Inl error \<Rightarrow> throwError error
            | Inr () \<Rightarrow> returnOk (TPM.NV_ReadValue_out.data response);
@@ -62,12 +84,10 @@ where
                                      bool_dig (TPM.Auth_out.continueAuthSession auth_out)];(* 4H1 *)
       outAuthSetupParams \<leftarrow> return (hmac (snd a) outAuthSetupParams');
       when (outAuthSetupParams \<noteq> TPM.Auth_out.auth auth_out)
-        reboot;
+        exit;
       return ()
     od);
     returnOk ret
    odE"
-
-thm TPM_NV_ReadValue_def
 
 end

@@ -1,23 +1,46 @@
 theory TPM_Corres
 imports
   RRelation
-  "../Abstract/Abstract"
+  StateRelation
   "../lib/NondetCorres"
+  "../lib/WP_Extras"
 begin
 
-definition "R \<equiv> UNIV :: (astate \<times> lifted_globals) set"
+context sable_verified
+begin
 
-abbreviation "corres \<equiv> corres_underlying R False True"
+abbreviation "PO \<equiv> powerOn \<circ> machine"
+abbreviation "PO' \<equiv> powerOn \<circ> phantom_machine_state_''"
+abbreviation "corres \<equiv> \<lambda>rrel G G'. corres_underlying R False True rrel
+                (\<lambda>s. PO s \<and> G s) (\<lambda>s'. PO' s' \<and> G' s')"
+
+(* FIXME: reason about size, value *)
+definition
+  StoredData_rel :: "string TPM.STORED_DATA \<Rightarrow> (8 word ptr \<times> 32 word) \<times> lifted_globals \<Rightarrow> bool"
+where
+  "StoredData_rel d d' \<equiv> case d' of ((v', size'), s') \<Rightarrow>
+    \<forall>p \<in> fst (unpack_TPM_STORED_DATA12' v' size' s'). STORED_DATA_rel \<top>\<top> d p"
+
+end
 
 locale sable_m = sable_verified +
-  assumes TPM_PCRRead_corres:
-    "PCRINDEX_rel i i' \<Longrightarrow>
-      corres TPM_PCRRead_rel \<top> \<top> (TPM_PCRRead i) (TPM_PCRRead' i')"
+  assumes get_authdata_corres: "corres (\<lambda>r r'. AUTHDATA_rel r (fst r'))
+                                  \<top> \<top> get_authdata get_authdata'"
 
-      and TPM_NV_ReadValue_corres:
-    "\<lbrakk>idx' = of_nat idx; off' = of_nat off\<rbrakk>
-      \<Longrightarrow> corres RESULT_rel \<top> (\<lambda>s'. Ball (set (array_addrs data' size')) (is_valid_w8 s'))
-      (TPM_NV_ReadValue idx off a)
-      (TPM_NV_ReadValue' data' idx' off' size')"
+      and get_nonce_corres: "corres (\<lambda>r r'. NONCE_rel r (fst r')) \<top> \<top> get_nonce get_nonce'"
+
+      and exit_corres: "\<And>P P' i. corres \<top>\<top> P P' exit (exit' i)"
+
+      and TPM_PCRRead_corres: "\<And>i i'. PCRINDEX_rel i i' \<Longrightarrow>
+        corres (\<lambda>r r'. TPM_PCRRead_rel r (fst r')) \<top> \<top> (TPM_PCRRead i) (TPM_PCRRead' i')"
+
+      and TPM_OIAP_corres: "\<And>sess'. corres (\<lambda>r r'. RESULT_rel r (fst r'))
+          \<top> (\<lambda>s'. is_valid_tdTPM_SESSION_C'ptr s' sess') TPM_OIAP (TPM_OIAP' sess')"
+
+      (* FIXME: add constraints to the authdata/session inputs *)
+      and TPM_NV_ReadValue_corres: "\<And>P P' idx idx' off off' a size' ownerAuth' s'.
+        \<lbrakk>idx' = of_nat idx; off' = of_nat off\<rbrakk>
+        \<Longrightarrow> corres (TPM_NV_ReadValue_rel StoredData_rel) P P' (TPM_NV_ReadValue idx off a)
+        (TPM_NV_ReadValue' idx' off' size' ownerAuth' s')"
 
 end
