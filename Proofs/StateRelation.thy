@@ -19,7 +19,8 @@ where
 definition
   R :: "(astate \<times> lifted_globals) set"
 where
-  "R \<equiv> {(s, s'). (powerOn \<circ> machine) s = (powerOn \<circ> phantom_machine_state_'') s' \<and>
+  "R \<equiv> {(s, s'). (powerOn \<circ> machine) s = False \<and> (powerOn \<circ> phantom_machine_state_'') s' = False \<or>
+        ((powerOn \<circ> machine) s = True \<and> (powerOn \<circ> phantom_machine_state_'') s' = True \<and>
        (let sess_deref = \<lambda>p'. heap_tdTPM_SESSION_C s' (heap_tdTPM_SESSION_C'ptr s' p') in
        let sess_valid = \<lambda>p'. is_valid_tdTPM_SESSION_C'ptr s' p' \<and> is_valid_tdTPM_SESSION_C s'
               (heap_tdTPM_SESSION_C'ptr s' p') in
@@ -28,7 +29,7 @@ where
              \<longrightarrow> (\<forall>sess. \<exists>h. sessions s h = Some sess \<and> TPM_SESSION_rel (h, sess) (sess_deref p')))
          \<and> (\<forall>sess h. sessions s h = Some sess \<longrightarrow>
               Bex (set (array_addrs (Ptr (symbol_table ''sessions'')) 2))
-             (\<lambda>p'. sess_valid p' \<and> TPM_SESSION_rel (h, sess) (sess_deref p'))))}"
+             (\<lambda>p'. sess_valid p' \<and> TPM_SESSION_rel (h, sess) (sess_deref p')))))}"
 
 end
 
