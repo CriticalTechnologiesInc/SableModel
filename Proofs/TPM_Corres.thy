@@ -52,7 +52,7 @@ context sable_m
 begin
 
 lemma exit: "\<lbrace>\<top>\<rbrace> exit \<lbrace>\<lambda>_ s. \<not>PO s\<rbrace>"
-unfolding exit_def apply wp
+unfolding exit_def by (wp, auto)
 
 lemma exit': "\<lbrace>\<top>\<rbrace> exit' \<lbrace>\<lambda>_ s'. \<not>PO' s'\<rbrace>"
 using exit_corres

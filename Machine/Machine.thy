@@ -21,12 +21,12 @@ where
    od"
 
 lemma tpm_lift_wp[wp]:
-  "\<forall>ss. \<lbrace>\<lambda>s. P (ss\<lparr> tpm := s \<rparr>)\<rbrace> m \<lbrace>\<lambda>r s'. Q r (ss\<lparr> tpm := s' \<rparr>)\<rbrace> \<Longrightarrow> \<lbrace>P\<rbrace> tpm_lift m \<lbrace>Q\<rbrace>"
+  "(\<And>ss. \<lbrace>\<lambda>s. P (ss\<lparr> tpm := s \<rparr>)\<rbrace> m \<lbrace>\<lambda>r s'. Q r (ss\<lparr> tpm := s' \<rparr>)\<rbrace>) \<Longrightarrow> \<lbrace>P\<rbrace> tpm_lift m \<lbrace>Q\<rbrace>"
   unfolding tpm_lift_def apply wp unfolding valid_def
 proof -
   fix s :: machine_state and r
   let ?tpm_state = "tpm s"
-  assume a: "\<forall>ss s. P (ss\<lparr>tpm := s\<rparr>) \<longrightarrow> (\<forall>(r, s')\<in>fst (m s). Q r (ss\<lparr>tpm := s'\<rparr>))"
+  assume a: "\<And>ss. \<forall>s. P (ss\<lparr>tpm := s\<rparr>) \<longrightarrow> (\<forall>(r, s')\<in>fst (m s). Q r (ss\<lparr>tpm := s'\<rparr>))"
      and "P s"
   have s: "s = s\<lparr>tpm := ?tpm_state\<rparr>" by auto
   with `P s` have "P (s\<lparr>tpm := ?tpm_state\<rparr>)" by presburger

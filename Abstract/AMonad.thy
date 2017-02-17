@@ -38,13 +38,13 @@ where
    od"
 
 lemma machine_op_lift_wp[wp]:
-  "\<forall>ss. \<lbrace>\<lambda>s. P (ss\<lparr> machine := s \<rparr>)\<rbrace> m \<lbrace>\<lambda>r s'. Q r (ss\<lparr> machine := s' \<rparr>)\<rbrace>
+  "(\<And>ss. \<lbrace>\<lambda>s. P (ss\<lparr> machine := s \<rparr>)\<rbrace> m \<lbrace>\<lambda>r s'. Q r (ss\<lparr> machine := s' \<rparr>)\<rbrace>)
     \<Longrightarrow> \<lbrace>P\<rbrace> machine_op_lift m \<lbrace>Q\<rbrace>"
   unfolding machine_op_lift_def apply wp unfolding valid_def
 proof -
   fix s :: astate and r
   let ?m_state = "machine s"
-  assume a: "\<forall>ss s. P (ss\<lparr>machine := s\<rparr>) \<longrightarrow> (\<forall>(r, s')\<in>fst (m s). Q r (ss\<lparr>machine := s'\<rparr>))"
+  assume a: "\<And>ss. \<forall>s. P (ss\<lparr>machine := s\<rparr>) \<longrightarrow> (\<forall>(r, s')\<in>fst (m s). Q r (ss\<lparr>machine := s'\<rparr>))"
      and "P s"
   have s: "s = s\<lparr>machine := ?m_state\<rparr>" by auto
   with `P s` have "P (s\<lparr>machine := ?m_state\<rparr>)" by presburger
