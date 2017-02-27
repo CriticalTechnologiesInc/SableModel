@@ -25,6 +25,34 @@ record astate =
   sessions :: "(TPM.AUTHHANDLE, Session) lookup"
 
 type_synonym 'a s_monad = "(astate, 'a) nondet_monad"
+type_synonym ('e, 'a) se_monad = "(astate, 'e + 'a) nondet_monad"
+
+datatype ERROR =
+  E_BAD_ELF_HEADER
+| E_SHA1_DATA_SIZE
+| E_NO_MODULE
+| E_BAD_MODULE
+| E_BAD_MBI
+| E_NO_MBI
+| E_BAD_TPM_VENDOR
+| E_TIS_TRANSMIT
+| E_TIS_LOCALITY_REGISTER_INVALID
+| E_TIS_LOCALITY_ACCESS_TIMEOUT
+| E_TIS_LOCALITY_ALREADY_ACCESSED
+| E_TIS_LOCALITY_DEACTIVATE
+| E_PCI
+| E_APIC
+| E_DEV
+| E_SVM_ENABLE
+| E_NO_EXT
+| E_NO_APIC
+| E_NO_SVM
+| E_BUFFER_OVERFLOW
+| E_TPM_BAD_OUTPUT_PARAM
+| E_TPM_BAD_OUTPUT_AUTH
+| E_TPM TPM.ERROR
+
+type_synonym 'a E_monad = "(ERROR, 'a) se_monad"
 
 definition
   machine_op_lift :: "'a machine_monad \<Rightarrow> 'a s_monad"

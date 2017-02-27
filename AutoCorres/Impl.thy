@@ -6,12 +6,12 @@ imports
 begin
 
 (* Parse the input file. *)
-install_C_file "../src/sable_verified.cpp" [machinety = machine_state]
+install_C_file "../src/sable_verified_pp.c" [machinety = machine_state]
 
 (* Abstract the input file. *)
-autocorres "../src/sable_verified.cpp"
+autocorres "../src/sable_verified_pp.c"
 
-context sable_verified
+context sable_verified_pp
 begin
 
 thm get_pcr_info'_def

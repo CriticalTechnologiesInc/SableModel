@@ -42,15 +42,15 @@ definition "TPM_BASE \<equiv> 0 :: 32 word"
 definition "TPM_SUCCESS \<equiv> TPM_BASE"
 
 definition
-  ERROR_rel :: "TPM.ERROR \<Rightarrow> 32 word \<Rightarrow> bool"
+  TPM_ERROR_rel :: "TPM.ERROR \<Rightarrow> 32 word \<Rightarrow> bool"
 where
-  "ERROR_rel e e' \<equiv> if e' = TPM_BASE then False else
+  "TPM_ERROR_rel e e' \<equiv> if e' = TPM_BASE then False else
     case e of
       AUTHFAIL \<Rightarrow> e' = TPM_BASE + 1
     | OTHER_ERROR \<Rightarrow> e' > TPM_BASE + 1 \<and> e' \<le> TPM_BASE + 99"
 
-value "ERROR_rel AUTHFAIL 1" (* True *)
-value "ERROR_rel OTHER_ERROR 1" (* False *)
+value "TPM_ERROR_rel AUTHFAIL 1" (* True *)
+value "TPM_ERROR_rel OTHER_ERROR 1" (* False *)
 
 definition
   RESULT_rel :: "(TPM.ERROR + unit) \<Rightarrow> 32 word \<Rightarrow> bool"
