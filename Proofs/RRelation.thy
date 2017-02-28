@@ -3,26 +3,70 @@ imports
   TPM_Relation
 begin
 
-definition
-  TPM_PCRRead_rel :: "(TPM.ERROR + TPM.DIGEST) \<Rightarrow> TPM_PCRRead_ret_C \<Rightarrow> bool"
-where
-  "TPM_PCRRead_rel r r' \<equiv>
-    case r of
-      Inl error \<Rightarrow> ERROR_rel error (TPM_PCRRead_ret_C.returnCode_C r')
-    | Inr digest \<Rightarrow> TPM_PCRRead_ret_C.returnCode_C r' = 0 \<and>
-        DIGEST_rel digest (TPM_PCRRead_ret_C.outDigest_C r')"
+type_synonym 'a value_rel = "'a \<Rightarrow> heap_data \<times> lifted_globals \<Rightarrow> bool"
 
 definition
-  TPM_NV_ReadValue_rel :: "(('a :: Hashable) \<Rightarrow> (8 word ptr \<times> 32 word) \<times> lifted_globals \<Rightarrow> bool)
-                          \<Rightarrow> TPM.ERROR + 'a
-                          \<Rightarrow> TPM_NV_ReadValue_ret_C \<times> lifted_globals
-                          \<Rightarrow> bool"
+  RESULT_rel :: "ERROR + unit \<Rightarrow> tdRESULT_C \<Rightarrow> bool"
 where
-  "TPM_NV_ReadValue_rel vrel r r' \<equiv>
+  "RESULT_rel r r' \<equiv>
     case r of
-      Inl e \<Rightarrow> ERROR_rel e (TPM_NV_ReadValue_ret_C.returnCode_C (fst r'))
-    | Inr v \<Rightarrow> TPM_NV_ReadValue_ret_C.returnCode_C (fst r') = TPM_SUCCESS \<and>
-        vrel v ((TPM_NV_ReadValue_ret_C.data_C (fst r'),
-        TPM_NV_ReadValue_ret_C.dataSize_C (fst r')), snd r')"
+      Inl error \<Rightarrow> ERROR_rel error (tdEXCEPTION_C.error_C (tdRESULT_C.exception_C r'))
+    | Inr value \<Rightarrow> tdEXCEPTION_C.error_C (tdRESULT_C.exception_C r') = NONE"
+
+definition
+  R_AUTHDATA_rel :: "ERROR + TPM.AUTHDATA \<Rightarrow> TPM_AUTHDATA_exception_C \<Rightarrow> bool"
+where
+  "R_AUTHDATA_rel a a' \<equiv>
+    case a of
+      Inl error \<Rightarrow> ERROR_rel error (tdEXCEPTION_C.error_C (TPM_AUTHDATA_exception_C.exception_C a'))
+    | Inr value \<Rightarrow> tdEXCEPTION_C.error_C (TPM_AUTHDATA_exception_C.exception_C a') = NONE
+        \<and> AUTHDATA_rel value (TPM_AUTHDATA_exception_C.value_C a')"
+
+definition
+  R_NONCE_rel :: "ERROR + TPM.NONCE \<Rightarrow> TPM_NONCE_exception_C \<Rightarrow> bool"
+where
+  "R_NONCE_rel a a' \<equiv>
+    case a of
+      Inl error \<Rightarrow> ERROR_rel error (tdEXCEPTION_C.error_C (TPM_NONCE_exception_C.exception_C a'))
+    | Inr value \<Rightarrow> tdEXCEPTION_C.error_C (TPM_NONCE_exception_C.exception_C a') = NONE
+        \<and> NONCE_rel value (TPM_NONCE_exception_C.value_C a')"
+
+definition
+  R_PCRVALUE_rel :: "(ERROR + TPM.DIGEST) \<Rightarrow> TPM_PCRVALUE_exception_C \<Rightarrow> bool"
+where
+  "R_PCRVALUE_rel a a' \<equiv>
+    case a of
+      Inl error \<Rightarrow> ERROR_rel error (tdEXCEPTION_C.error_C (TPM_PCRVALUE_exception_C.exception_C a'))
+    | Inr value \<Rightarrow> tdEXCEPTION_C.error_C (TPM_PCRVALUE_exception_C.exception_C a') = NONE
+        \<and> DIGEST_rel value (TPM_PCRVALUE_exception_C.value_C a')"
+
+definition
+  HEAP_DATA_rel :: "('a :: Hashable) value_rel \<Rightarrow> 'a \<Rightarrow> tdHEAP_DATA_C \<times> lifted_globals \<Rightarrow> bool"
+where
+  "HEAP_DATA_rel vrel v v' \<equiv> vrel v ((tdHEAP_DATA_C.data_C (fst v'),
+        tdHEAP_DATA_C.dataSize_C (fst v')), snd v')"
+
+definition
+  R_HEAP_DATA_rel :: "('a :: Hashable) value_rel
+                      \<Rightarrow> (ERROR + 'a) \<Rightarrow> HEAP_DATA_exception_C \<times> lifted_globals \<Rightarrow> bool"
+where
+  "R_HEAP_DATA_rel vrel v v' \<equiv>
+    case v of
+      Inl error \<Rightarrow> ERROR_rel error (tdEXCEPTION_C.error_C (HEAP_DATA_exception_C.exception_C (fst v')))
+    | Inr value \<Rightarrow> tdEXCEPTION_C.error_C (HEAP_DATA_exception_C.exception_C (fst v')) = NONE
+        \<and> HEAP_DATA_rel vrel value (HEAP_DATA_exception_C.value_C (fst v'), snd v')"
+
+definition (in sable_verified_pp)
+  E_STORED_DATA_rel :: "('a :: Hashable) value_rel \<Rightarrow>
+                        'a TPM.STORED_DATA \<Rightarrow> heap_data \<times> lifted_globals \<Rightarrow> bool"
+where
+  "E_STORED_DATA_rel vrel d d' \<equiv> case d' of ((v', size'), s') \<Rightarrow>
+    \<forall>p \<in> fst (unpack_TPM_STORED_DATA12' v' size' s'). STORED_DATA_rel vrel d p"
+
+(* FIXME *)
+definition
+  string_rel :: "string \<Rightarrow> heap_data \<times> lifted_globals \<Rightarrow> bool"
+where
+  "string_rel s s' \<equiv> True"
 
 end

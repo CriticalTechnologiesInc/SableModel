@@ -5,12 +5,12 @@ imports
 begin
 
 definition
-  get_authdata :: "TPM.AUTHDATA s_monad"
+  get_authdata :: "TPM.AUTHDATA E_monad"
 where
   "get_authdata \<equiv> unknown"
 
 definition
-  get_nonce :: "TPM.NONCE s_monad"
+  get_nonce :: "TPM.NONCE E_monad"
 where
   "get_nonce \<equiv> unknown"
 

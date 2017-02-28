@@ -11,7 +11,7 @@ where
     command \<leftarrow> returnOk \<lparr> TPM.PCRRead_in.pcrIndex = pcr \<rparr>;
     response \<leftarrow> liftE $ m_tpm_lift (TPM.PCRRead command);
     case (TPM.PCRRead_out.returnCode response) of
-      Inl error \<Rightarrow> throwError error
+      Inl error \<Rightarrow> throwError (E_TPM error)
     | Inr () \<Rightarrow> returnOk (TPM.PCRRead_out.outDigest response)
    odE"
 
@@ -22,7 +22,7 @@ where
    doE
     response \<leftarrow> liftE $ m_tpm_lift TPM.OIAP;
     case (TPM.OIAP_out.returnCode response) of
-      Inl error \<Rightarrow> throwError error
+      Inl error \<Rightarrow> throwError (E_TPM error)
     | Inr () \<Rightarrow> liftE $
       do
         nOdd \<leftarrow> unknown;
@@ -39,7 +39,7 @@ where
 
 definition
   TPM_NV_ReadValue :: "TPM.NV_INDEX \<Rightarrow> nat \<Rightarrow> (TPM.AUTHHANDLE \<times> TPM.AUTHDATA) option
-    \<Rightarrow> (TPM.ERROR + ('a :: Hashable)) s_monad"
+    \<Rightarrow> (ERROR + ('a :: Hashable)) s_monad"
 where
   "TPM_NV_ReadValue idx off a \<equiv>
    doE
@@ -69,7 +69,7 @@ where
     \<rparr>;
     response \<leftarrow> liftE $ m_tpm_lift (TPM.NV_ReadValue command);
     ret \<leftarrow> case (TPM.NV_ReadValue_out.returnCode response) of
-             Inl error \<Rightarrow> throwError error
+             Inl error \<Rightarrow> throwError (E_TPM error)
            | Inr () \<Rightarrow> returnOk (TPM.NV_ReadValue_out.data response);
     case a of
       None \<Rightarrow> returnOk ()

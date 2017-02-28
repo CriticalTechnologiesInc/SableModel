@@ -10,7 +10,7 @@ lemma corres_noop_r[intro]:
 unfolding corres_underlying_def return_def using assms
 by (auto simp add: exs_valid_def)
 
-lemma corres_valid[intro]:
+(*lemma corres_valid[intro]:
   fixes s\<^sub>A
   assumes corres: "corres_underlying sr nf nf' rr P P' m m'"
       and valid: "\<lbrace>P\<rbrace> m \<lbrace>Q\<rbrace>"
@@ -23,6 +23,6 @@ proof clarify
   { assume "\<exists>s\<^sub>A. (s\<^sub>A, s\<^sub>C) \<in> sr"
     then obtain s\<^sub>A where "(s\<^sub>A, s\<^sub>C) \<in> sr" by auto
     from corres
-  show "Q' r' s\<^sub>C'"
+  show "Q' r' s\<^sub>C'"*)
 
 end

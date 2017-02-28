@@ -4,6 +4,8 @@ imports
   "../AutoCorres/Impl"
 begin
 
+type_synonym heap_data = "8 word ptr \<times> 32 word"
+
 definition
   PCRINDEX_rel :: "TPM.PCRINDEX \<Rightarrow> 32 word \<Rightarrow> bool"
 where
@@ -53,16 +55,45 @@ value "TPM_ERROR_rel AUTHFAIL 1" (* True *)
 value "TPM_ERROR_rel OTHER_ERROR 1" (* False *)
 
 definition
-  RESULT_rel :: "(TPM.ERROR + unit) \<Rightarrow> 32 word \<Rightarrow> bool"
+  TPM_RESULT_rel :: "(TPM.ERROR + unit) \<Rightarrow> 32 word \<Rightarrow> bool"
 where
-  "RESULT_rel r r' \<equiv>
+  "TPM_RESULT_rel r r' \<equiv>
     case r of
-      Inl error \<Rightarrow> ERROR_rel error r'
+      Inl error \<Rightarrow> TPM_ERROR_rel error r'
     | Inr _ \<Rightarrow> r' = TPM_SUCCESS"
 
-value "RESULT_rel (Inr ()) 0" (* True *)
-value "RESULT_rel (Inr ()) 1" (* False *)
-value "RESULT_rel (Inl AUTHFAIL) 1" (* True *)
+value "TPM_RESULT_rel (Inr ()) 0" (* True *)
+value "TPM_RESULT_rel (Inr ()) 1" (* False *)
+value "TPM_RESULT_rel (Inl AUTHFAIL) 1" (* True *)
+
+definition
+  ERROR_rel :: "ERROR \<Rightarrow> 32 signed word \<Rightarrow> bool"
+where
+  "ERROR_rel e e' \<equiv>
+    case e of
+      E_BAD_ELF_HEADER \<Rightarrow> e' = ERROR_BAD_ELF_HEADER
+    | E_SHA1_DATA_SIZE \<Rightarrow> e' = ERROR_SHA1_DATA_SIZE
+    | E_NO_MODULE \<Rightarrow> e' = ERROR_NO_MODULE
+    | E_BAD_MODULE \<Rightarrow> e' = ERROR_BAD_MODULE
+    | E_BAD_MBI \<Rightarrow> e' = ERROR_BAD_MBI
+    | E_NO_MBI \<Rightarrow> e' = ERROR_NO_MBI
+    | E_BAD_TPM_VENDOR \<Rightarrow> e' = ERROR_BAD_TPM_VENDOR
+    | E_TIS_TRANSMIT \<Rightarrow> e' = ERROR_TIS_TRANSMIT
+    | E_TIS_LOCALITY_REGISTER_INVALID \<Rightarrow> e' = ERROR_TIS_LOCALITY_REGISTER_INVALID
+    | E_TIS_LOCALITY_ACCESS_TIMEOUT \<Rightarrow> e' = ERROR_TIS_LOCALITY_ACCESS_TIMEOUT
+    | E_TIS_LOCALITY_ALREADY_ACCESSED \<Rightarrow> e' = ERROR_TIS_LOCALITY_ALREADY_ACCESSED
+    | E_TIS_LOCALITY_DEACTIVATE \<Rightarrow> e' = ERROR_TIS_LOCALITY_DEACTIVATE
+    | E_PCI \<Rightarrow> e' = ERROR_PCI
+    | E_APIC \<Rightarrow> e' = ERROR_APIC
+    | E_DEV \<Rightarrow> e' = ERROR_DEV
+    | E_SVM_ENABLE \<Rightarrow> e' = ERROR_SVM_ENABLE
+    | E_NO_EXT \<Rightarrow> e' = ERROR_NO_EXT
+    | E_NO_APIC \<Rightarrow> e' = ERROR_NO_APIC
+    | E_NO_SVM \<Rightarrow> e' = ERROR_NO_SVM
+    | E_BUFFER_OVERFLOW \<Rightarrow> e' = ERROR_BUFFER_OVERFLOW
+    | E_TPM_BAD_OUTPUT_PARAM \<Rightarrow> e' = ERROR_TPM_BAD_OUTPUT_PARAM
+    | E_TPM_BAD_OUTPUT_AUTH \<Rightarrow> e' = ERROR_TPM_BAD_OUTPUT_AUTH
+    | E_TPM tpme \<Rightarrow> \<exists>tpme'. e' = (1 << 7) || tpme' \<and> TPM_ERROR_rel tpme (scast tpme')"
 
 definition
   BOOL_rel :: "bool \<Rightarrow> 8 word \<Rightarrow> bool"
@@ -114,7 +145,7 @@ definition
   PCR_INFO_LONG_rel :: "TPM.PCR_INFO_LONG \<Rightarrow> tdTPM_PCR_INFO_LONG_C \<times> lifted_globals \<Rightarrow> bool"
 where
   "PCR_INFO_LONG_rel i i' \<equiv>
-    tdTPM_PCR_INFO_LONG_C.tag_C (fst i') = 6 \<and>
+    tdTPM_PCR_INFO_LONG_C.tag_C (fst i') = 0x0006 \<and>
     LOCALITY_SELECTION_rel (TPM.PCR_INFO_LONG.localityAtCreation i)
       (tdTPM_PCR_INFO_LONG_C.localityAtCreation_C (fst i')) \<and>
     LOCALITY_SELECTION_rel (TPM.PCR_INFO_LONG.localityAtRelease i)
@@ -150,22 +181,9 @@ where
 
 (* Bogus for now *)
 definition
-  STORED_DATA_rel :: "(('a :: Hashable) \<Rightarrow> (8 word ptr \<times> 32 word) \<times> lifted_globals \<Rightarrow> bool)
+  STORED_DATA_rel :: "(('a :: Hashable) \<Rightarrow> heap_data \<times> lifted_globals \<Rightarrow> bool)
     \<Rightarrow> 'a TPM.STORED_DATA \<Rightarrow> tdTPM_STORED_DATA12_C \<times> lifted_globals \<Rightarrow> bool"
 where
   "STORED_DATA_rel vrel d d' \<equiv> True"
-
-(* Function return relations *)
-
-(* FIXME
-definition
-  ReadValue_STORED_DATA_rel :: "('a :: Hashable) TPM.STORED_DATA
-    \<Rightarrow> (8 word ptr \<times> 32 word) \<times> lifted_globals \<Rightarrow> bool"
-where
-  "ReadValue_STORED_DATA_rel d d' \<equiv>
-    let s' = snd d' in
-    let ptr' = fst (fst d') in
-    let size' = snd (fst d') in
-    vrel d " *)
 
 end
