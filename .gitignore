@@ -1,0 +1,12 @@
+*.o
+oslo
+beirut
+munich
+pamplona
+*.swp
+tags
+
+
+#ignoring Isabelle temp files
+*.thy\#
+*.*~
