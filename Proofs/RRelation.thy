@@ -56,7 +56,17 @@ where
     | Inr value \<Rightarrow> tdEXCEPTION_C.error_C (HEAP_DATA_exception_C.exception_C (fst v')) = NONE
         \<and> HEAP_DATA_rel vrel value (HEAP_DATA_exception_C.value_C (fst v'), snd v')"
 
-definition (in sable_verified_pp)
+definition
+  R_STORED_DATA_rel :: "('a :: Hashable) value_rel \<Rightarrow> (ERROR + 'a TPM.STORED_DATA)
+                        \<Rightarrow> TPM_STORED_DATA12_exception_C \<times> lifted_globals \<Rightarrow> bool"
+where
+  "R_STORED_DATA_rel vrel d d' \<equiv>
+    case d of
+      Inl error \<Rightarrow> ERROR_rel error (tdEXCEPTION_C.error_C (TPM_STORED_DATA12_exception_C.exception_C (fst d')))
+    | Inr value \<Rightarrow> tdEXCEPTION_C.error_C (TPM_STORED_DATA12_exception_C.exception_C (fst d')) = NONE
+        \<and> STORED_DATA_rel vrel value ((TPM_STORED_DATA12_exception_C.value_C (fst d')), snd d')"
+
+definition (in sable_isa)
   E_STORED_DATA_rel :: "('a :: Hashable) value_rel \<Rightarrow>
                         'a TPM.STORED_DATA \<Rightarrow> heap_data \<times> lifted_globals \<Rightarrow> bool"
 where

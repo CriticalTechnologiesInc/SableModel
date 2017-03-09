@@ -6,90 +6,82 @@ begin
 context sable_m
 begin
 
-definition
-  read_passphrase_rel :: "string TPM.STORED_DATA \<Rightarrow> tdTPM_STORED_DATA12_C \<times> lifted_globals \<Rightarrow> bool"
-where
-  "read_passphrase_rel d d' \<equiv> True"
-
-lemma read_passphrase_corres: "corres read_passphrase_rel \<top> \<top> read_passphrase read_passphrase'"
+lemma read_passphrase_corres:
+  "corres (R_STORED_DATA_rel string_rel) \<top> \<top> (read_passphrase i) (read_passphrase' (of_nat i))"
+  (is "corres ?r _ _ _ _")
 unfolding read_passphrase_def read_passphrase'_def
-proof -
-  have "corres read_passphrase_rel \<top> \<top> (do x \<leftarrow> TPM_NV_ReadValue 4 0 None;
-                                          case x of Inl e \<Rightarrow> exit_r | Inr b \<Rightarrow> return b
-                                         od)
-       (do ret' \<leftarrow> (unknown >>= (\<lambda>au. TPM_NV_ReadValue' 4 0 0x190 (hasValue_C_update (\<lambda>_. 0) au) NULL));
-           (when (TPM_NV_ReadValue_ret_C.returnCode_C ret' \<noteq> 0) exit' >>=
-           (\<lambda>_. unpack_TPM_STORED_DATA12' (TPM_NV_ReadValue_ret_C.data_C ret') (TPM_NV_ReadValue_ret_C.dataSize_C ret')))
-        od)" (is "corres _ _ _ (?a >>= ?b) (?c >>= ?d)")
-  proof -
-    let ?r' = "TPM_NV_ReadValue_rel StoredData_rel"
-    let ?R = "\<top>\<top>"
-    let ?R' = "\<top>\<top>"
-    have "corres ?r' \<top> \<top> ?a ?c"
-    apply (rule corres_symb_exec_r [where Q'="\<lambda>_. PO'"])
-      using TPM_NV_ReadValue_corres [where P=\<top> and P'=\<top> and idx=4 and idx'=4 and off=0 and off'=0
-        and size'="0x190" and s'=NULL and a=None] unfolding comp_def apply simp
-      unfolding unknown_def apply (wp select_wp, simp)
-      apply clarsimp
-      apply (rule_tac Q="\<lambda>s\<^sub>C. (s\<^sub>A, s\<^sub>C) \<in> R" in hoare_weaken_pre)
-      apply (wp select_wp, simp_all)
-      apply (rule non_fail_select')
-    done
-    moreover have "\<And>rv rv'. corres read_passphrase_rel (?R rv) (\<lambda>s'. ?r' rv (rv', s') \<and> ?R' rv' s') (?b rv) (?d rv')"
-    proof (rule corres_assume_pre)
-      fix rv rv' s s'
-      assume G: "PO s \<and> True"
-         and G': "PO' s' \<and> TPM_NV_ReadValue_rel StoredData_rel rv (rv', s') \<and> True"
-         and "(s, s') \<in> R"
-      let ?corres_b_d = "corres read_passphrase_rel (?R rv) (\<lambda>s'. ?r' rv (rv', s') \<and> ?R' rv' s')
-                    (?b rv) (?d rv')"
-      { fix error
-        assume rv: "rv = Inl error"
-        with G' have rv': "TPM_NV_ReadValue_ret_C.returnCode_C rv' \<noteq> 0"
-          unfolding TPM_NV_ReadValue_rel_def ERROR_rel_def TPM_BASE_def by auto
-        have "corres \<top>\<top> \<top> \<top> exit exit'" using exit_corres [where P=\<top> and P'=\<top>] by simp
-        moreover have "corres_off read_passphrase_rel (\<top>\<top> rv)
-          (\<lambda>s'. \<top>\<top> rv (rv', s') \<and> \<top> s') unknown
-            (unpack_TPM_STORED_DATA12' (TPM_NV_ReadValue_ret_C.data_C rv')
-             (TPM_NV_ReadValue_ret_C.dataSize_C rv'))"
-          by (rule corres_off_valid)
-        moreover have "\<lbrace>\<top>\<rbrace> exit \<lbrace>\<lambda>_ s. \<not>PO s\<rbrace>" unfolding exit_def by (wp, auto)
-        moreover have "\<lbrace>\<top>\<rbrace> exit' \<lbrace>\<lambda>_ s'. \<not>PO' s'\<rbrace>" unfolding exit'_def apply wp
-        have ?corres_b_d sorry}
-      moreover
-      { fix val
-        assume rv: "rv = Inr val"
-        with G' have rv': "TPM_NV_ReadValue_ret_C.returnCode_C rv' = 0"
-          unfolding TPM_NV_ReadValue_rel_def ERROR_rel_def TPM_SUCCESS_def TPM_BASE_def by auto
-        have ?corres_b_d sorry}
-      ultimately show ?corres_b_d by (meson sum_all_ex(2))
-    hence 
- (*   hence 
-      { fix error
-        assume "rv = Inl error"
-        hence "corres read_passphrase_rel \<top> (\<lambda>s'. TPM_NV_ReadValue_rel StoredData_rel rv (rv', s')) exit (?d rv')"
-  
-  proof (rule corres_split [where r'="\<lambda>s'. TPM_NV_ReadValue_rel StoredData_rel rv (rv', s')" and R="\<top>\<top>" and R'="\<top>\<top>"])
-    fix val val'
-    let ?goal = "corres (\<lambda>_ _. True) (\<lambda>_. True) (\<lambda>s'. True \<and> True) (case val of Inl e \<Rightarrow> exit | Inr b \<Rightarrow> return b)
-               (do _ \<leftarrow> when (TPM_NV_ReadValue_ret_C.returnCode_C val' \<noteq> 0) (exit' (TPM_NV_ReadValue_ret_C.returnCode_C val'));
-                   unpack_TPM_STORED_DATA12' (TPM_NV_ReadValue_ret_C.data_C val') (TPM_NV_ReadValue_ret_C.dataSize_C val')
-                od)"
-    { fix error
-      assume "val = Inl error"
-      hence "corres (\<lambda>_ _. True) (\<lambda>_. True) (\<lambda>s'. True) exit
-               (do _ \<leftarrow> when (TPM_NV_ReadValue_ret_C.returnCode_C val' \<noteq> 0) (exit' (TPM_NV_ReadValue_ret_C.returnCode_C val'));
-                   unpack_TPM_STORED_DATA12' (TPM_NV_ReadValue_ret_C.data_C val') (TPM_NV_ReadValue_ret_C.dataSize_C val')
-                od)"
-      have "?goal" }
-  sorry
-  thus "corres (\<lambda>_ _. True) (\<lambda>_. True) (\<lambda>_. True) (TPM_NV_ReadValue 4 0 None <catch> (\<lambda>e. exit))
-       (do nv_auth___struct_TPM_AUTHDATA_option_C \<leftarrow> unknown;
-           ret' \<leftarrow> TPM_NV_ReadValue' 4 0 0x190 (hasValue_C_update (\<lambda>_. 0) nv_auth___struct_TPM_AUTHDATA_option_C) NULL;
-           when (TPM_NV_ReadValue_ret_C.returnCode_C ret' \<noteq> 0) (exit' (TPM_NV_ReadValue_ret_C.returnCode_C ret'));
-           unpack_TPM_STORED_DATA12' (TPM_NV_ReadValue_ret_C.data_C ret') (TPM_NV_ReadValue_ret_C.dataSize_C ret')
-        od)" unfolding catch_def by (simp add: bind_assoc)
-qed*)
+proof simp
+  let ?r' = "R_HEAP_DATA_rel (E_STORED_DATA_rel string_rel)"
+  show "corres ?r \<top> \<top> (TPM_NV_ReadValue i 0 None)
+       (do ret' \<leftarrow> TPM_NV_ReadValue' (of_nat i) 0 0x190 (TPM_AUTHDATA_option_C (tdTPM_AUTHDATA_C (ARRAY _. 0)) 0) NULL;
+         condition (\<lambda>s. error_C (HEAP_DATA_exception_C.exception_C ret') \<noteq> 0)
+           (return (TPM_STORED_DATA12_exception_C (HEAP_DATA_exception_C.exception_C ret')
+              (tdTPM_STORED_DATA12_C 0 0 0 NULL 0 NULL)))
+           (do ret' \<leftarrow>
+               unpack_TPM_STORED_DATA12' (tdHEAP_DATA_C.data_C (HEAP_DATA_exception_C.value_C ret'))
+                (tdHEAP_DATA_C.dataSize_C (HEAP_DATA_exception_C.value_C ret'));
+               return (TPM_STORED_DATA12_exception_C (tdEXCEPTION_C NONE) ret')
+            od)
+      od)" (is "corres ?r _ _ ?read (?read' >>= ?d)")
+  apply (rule corres_bind_return)
+  apply (rule corres_guard_imp [where Q="\<top> and \<top>" and Q'="\<top> and \<top>"])
+  apply (rule corres_split [where r'="?r'" and R="\<top>\<top>" and R'="\<top>\<top>"])
+  proof simp_all
+    fix rv rv'
+    show "corres ?r \<top> (\<lambda>s'. ?r' rv (rv', s')) (return rv) (?d rv')"
+      (is "corres _ _ _ _ (condition (?c rv') (?t rv') (?f rv'))")
+    apply (rule corres_assume_pre, simp)
+    proof (cases rv)
+      case (Inl e)
+      fix s'
+      assume "?r' rv (rv', s')"
+      with Inl have rv': "error_C (HEAP_DATA_exception_C.exception_C rv') \<noteq> NONE"
+        unfolding R_HEAP_DATA_rel_def ERROR_rel_def by simp
+      hence "?c rv' s'" by (simp add: NONE_def)
+      from Inl and rv' have "corres ?r \<top> (\<lambda>s'. ?r' rv (rv', s')) (return rv) (?t rv')"
+        by (simp add: R_HEAP_DATA_rel_def R_STORED_DATA_rel_def)
+      thus ?thesis using `?c rv' s'` by auto
+    next
+      let ?error = "error_C (HEAP_DATA_exception_C.exception_C rv')"
+      let ?data = "tdHEAP_DATA_C.data_C (HEAP_DATA_exception_C.value_C rv')"
+      let ?dataSize = "tdHEAP_DATA_C.dataSize_C (HEAP_DATA_exception_C.value_C rv')"
+      case (Inr v)
+      fix s'
+      assume "?r' rv (rv', s')"
+      with Inr have rv'_e: "?error = NONE" unfolding R_HEAP_DATA_rel_def ERROR_rel_def by simp
+      hence "\<not>?c rv' s'" by (simp add: NONE_def)
+      from Inr and `?r' rv (rv', s')` have rv'_v:
+        "HEAP_DATA_rel (E_STORED_DATA_rel string_rel) v (HEAP_DATA_exception_C.value_C rv', s')"
+        unfolding R_HEAP_DATA_rel_def by simp
+      hence unpack: "\<forall>r \<in> fst (unpack_TPM_STORED_DATA12' ?data ?dataSize s').
+          STORED_DATA_rel string_rel v r"
+        unfolding HEAP_DATA_rel_def E_STORED_DATA_rel_def by simp
+      let ?r'' = "\<lambda>rv rv'. case rv of Inl e \<Rightarrow> False | Inr v \<Rightarrow> STORED_DATA_rel string_rel v rv'"
+      let ?unpack = "unpack_TPM_STORED_DATA12' ?data ?dataSize"
+      have "corres ?r \<top> (\<lambda>s'. ?r' (Inr v) (rv', s')) (return (Inr v)) (?f rv')"
+      apply (rule corres_bind_return)
+      proof (rule corres_split' [where r'="?r''" and Q="\<top>\<top>" and Q'="\<top>\<top>"])
+        have p: "\<forall>(s, s') \<in> SR. ?r' (Inr v) (rv', s') \<longrightarrow> (\<forall>(r', t') \<in> fst (?unpack s').
+              \<exists>(r, t) \<in> fst (return (Inr v) s). (t, t') \<in> SR \<and> ?r'' r (r', t'))"
+          unfolding R_HEAP_DATA_rel_def STORED_DATA_rel_def return_def by simp
+        with no_fail_unpack_TPM_STORED_DATA12'
+          show "corres ?r'' \<top> (\<lambda>s'. ?r' (Inr v) (rv', s')) (return (Inr v)) ?unpack"
+          by (fast intro!: corres_no_failI)
+      next
+        show "\<And>rv rv'. corres ?r \<top> (\<lambda>s'. ?r'' rv (rv', s') \<and> True) (return rv)
+          (return (TPM_STORED_DATA12_exception_C (tdEXCEPTION_C NONE) rv'))"
+          by (case_tac rv, auto simp add: R_STORED_DATA_rel_def STORED_DATA_rel_def)
+      next show "\<lbrace>\<top>\<rbrace> return (Inr v) \<lbrace>\<top>\<top>\<rbrace>" by (rule hoare_post_taut)
+      next show "\<lbrace>\<lambda>s'. ?r' (Inr v) (rv', s')\<rbrace> ?unpack \<lbrace>\<top>\<top>\<rbrace>" by (rule hoare_post_taut)
+      qed
+      thus ?thesis using Inr and `\<not>?c rv' s'` by simp
+    qed
+  next show "corres ?r' \<top> \<top> ?read ?read'" using TPM_NV_ReadValue_corres
+         by (metis of_nat_numeral semiring_1_class.of_nat_0)
+  next show "\<lbrace>\<top>\<rbrace> ?read \<lbrace>\<top>\<top>\<rbrace>" by (rule hoare_post_taut)
+  next show"\<lbrace>\<lambda>_. True\<rbrace> ?read' \<lbrace>\<lambda>_ _. True\<rbrace>" by (rule hoare_post_taut)
+  qed
+qed
 
 (*lemma refines: "AC_minimal \<sqsubseteq> A_minimal"
 proof (rule sim_imp_refines)

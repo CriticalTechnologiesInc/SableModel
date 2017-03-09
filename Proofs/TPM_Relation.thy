@@ -69,8 +69,8 @@ value "TPM_RESULT_rel (Inl AUTHFAIL) 1" (* True *)
 definition
   ERROR_rel :: "ERROR \<Rightarrow> 32 signed word \<Rightarrow> bool"
 where
-  "ERROR_rel e e' \<equiv>
-    case e of
+  "ERROR_rel e e' \<equiv> e' \<noteq> NONE \<and>
+    (case e of
       E_BAD_ELF_HEADER \<Rightarrow> e' = ERROR_BAD_ELF_HEADER
     | E_SHA1_DATA_SIZE \<Rightarrow> e' = ERROR_SHA1_DATA_SIZE
     | E_NO_MODULE \<Rightarrow> e' = ERROR_NO_MODULE
@@ -93,7 +93,7 @@ where
     | E_BUFFER_OVERFLOW \<Rightarrow> e' = ERROR_BUFFER_OVERFLOW
     | E_TPM_BAD_OUTPUT_PARAM \<Rightarrow> e' = ERROR_TPM_BAD_OUTPUT_PARAM
     | E_TPM_BAD_OUTPUT_AUTH \<Rightarrow> e' = ERROR_TPM_BAD_OUTPUT_AUTH
-    | E_TPM tpme \<Rightarrow> \<exists>tpme'. e' = (1 << 7) || tpme' \<and> TPM_ERROR_rel tpme (scast tpme')"
+    | E_TPM tpme \<Rightarrow> \<exists>tpme'. e' = (1 << 7) || tpme' \<and> TPM_ERROR_rel tpme (scast tpme'))"
 
 definition
   BOOL_rel :: "bool \<Rightarrow> 8 word \<Rightarrow> bool"

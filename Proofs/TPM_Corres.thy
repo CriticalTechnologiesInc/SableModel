@@ -9,7 +9,10 @@ begin
 context sable_verified_pp
 begin
 
-abbreviation "corres \<equiv> corres_underlying R False True"
+abbreviation "SR \<equiv> UNIV"
+
+(* FIXME use state relation *)
+abbreviation "corres \<equiv> corres_underlying SR False True"
 
 end
 
@@ -24,6 +27,9 @@ locale sable_m = sable_verified_pp +
 
       and TPM_OIAP_corres: "\<And>sess'. corres (\<lambda>r r'. RESULT_rel r (fst r'))
           \<top> (\<lambda>s'. is_valid_tdTPM_SESSION_C'ptr s' sess') TPM_OIAP (TPM_OIAP' sess')"
+
+      and no_fail_unpack_TPM_STORED_DATA12':
+        "\<And>P d dSize. no_fail P (unpack_TPM_STORED_DATA12' d dSize)"
 
       (* FIXME: add constraints to the authdata/session inputs *)
       and TPM_NV_ReadValue_corres: "\<And>P P' idx idx' off off' a size' ownerAuth' s'.

@@ -6,14 +6,15 @@ imports
 begin
 
 (* Parse the input file. *)
-install_C_file "../src/sable_verified_pp.c" [machinety = machine_state]
+install_C_file "../src/sable_isa.c" [machinety = machine_state]
 
 (* Abstract the input file. *)
-autocorres "../src/sable_verified_pp.c"
+autocorres "../src/sable_isa.c"
 
-context sable_verified_pp
+context sable_isa
 begin
 
+thm alloc'_def
 thm get_pcr_info'_def
 thm seal_passphrase'_def
 thm unseal_passphrase'_def
