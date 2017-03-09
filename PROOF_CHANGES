@@ -1,0 +1,8 @@
+- Rewrote read_passphrase to use THROW_TYPE(), and also not declare a return
+value at the beginning of the function, instead electing to return a compound
+literal at the end of the function. The result is clearer AutoCorres output.
+- Changed read_passphrase so that nv_auth is initialized when it is declared;
+this results in one less conjunct in the output monad
+- Simplified read_passphrase so that NULL is passed in as the session when
+NV_OWNER_REQUIRED is not defined. This again resulted in cleaner AutoCorres
+output
