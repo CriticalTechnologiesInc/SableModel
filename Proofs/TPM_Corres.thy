@@ -6,7 +6,7 @@ imports
   "../lib/WP_Extras"
 begin
 
-context sable_verified_pp
+context sable_isa
 begin
 
 abbreviation "SR \<equiv> UNIV"
@@ -16,7 +16,7 @@ abbreviation "corres \<equiv> corres_underlying SR False True"
 
 end
 
-locale sable_m = sable_verified_pp +
+locale sable_m = sable_isa +
   assumes get_authdata_corres: "corres (\<lambda>r r'. R_AUTHDATA_rel r (fst r'))
                                   \<top> \<top> get_authdata get_authdata'"
 

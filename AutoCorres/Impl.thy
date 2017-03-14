@@ -9,23 +9,22 @@ begin
 install_C_file "../src/sable_isa.c" [machinety = machine_state]
 
 (* Abstract the input file. *)
-autocorres "../src/sable_isa.c"
+autocorres [no_heap_abs = alloc init_heap] "../src/sable_isa.c"
 
 context sable_isa
 begin
 
+thm test_func'_def
+thm init_heap'_def
 thm alloc'_def
-thm get_pcr_info'_def
-thm seal_passphrase'_def
 thm unseal_passphrase'_def
-thm write_passphrase'_def
 thm read_passphrase'_def
-thm configure'_def
 thm trusted_boot'_def
 
 end
 
-locale sable = sable_verified
+
+(*locale sable = sable_verified
 begin
 
 definition
@@ -56,6 +55,6 @@ where
     Run = lift_nd trusted_boot'
   \<rparr>"
 
-end
+end*)
 
 end
