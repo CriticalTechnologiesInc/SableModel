@@ -6,3 +6,5 @@ this results in one less conjunct in the output monad
 - Simplified read_passphrase so that NULL is passed in as the session when
 NV_OWNER_REQUIRED is not defined. This again resulted in cleaner AutoCorres
 output
+- Changed init_heap() to use an ASSERT rather than a condition to check
+whether the heap has already been initialized
