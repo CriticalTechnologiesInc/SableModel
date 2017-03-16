@@ -8,3 +8,16 @@ NV_OWNER_REQUIRED is not defined. This again resulted in cleaner AutoCorres
 output
 - Changed init_heap() to use an ASSERT rather than a condition to check
 whether the heap has already been initialized
+- The algorithm used by alloc() to determine the number of blocks to be allocated
+was susceptible to unsigned integer overflow. Therefore changed the
+(n + k - 1) / k
+to
+(n / k) + 1
+which is safe, but may over-allocate blocks. Should fix this later!
+- The size check in alloc() was wrong! it should have been (node->size < blocks),
+but it was (node->size < size). This was a serious bug.
+- Removed all division operators, replaced them with bit-shifts. This wasn't
+essential to the proofs, but it may help with reasoning about alignment
+- The size check in alloc() was still wrong! It ACTUALLY should have been
+(node->size <= blocks), so that we still have space to allocate a new node
+with size 0 at the very end of the heap.

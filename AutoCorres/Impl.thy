@@ -9,7 +9,9 @@ begin
 install_C_file "../src/sable_isa.c" [machinety = machine_state]
 
 (* Abstract the input file. *)
-autocorres [no_heap_abs = alloc init_heap] "../src/sable_isa.c"
+autocorres [
+  no_heap_abs = alloc init_heap
+] "../src/sable_isa.c"
 
 context sable_isa
 begin
