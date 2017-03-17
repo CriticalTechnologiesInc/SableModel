@@ -53,24 +53,22 @@ apply simp
 apply wp
 apply (auto simp add: h_val_field_from_bytes shiftr2_is_div_4 h_val_id)
 apply (simp add: ptr_add_def ptr_sub_def)
-
-  apply (rule intvl_p)
-  apply (simp add: ptr_sub_def shiftr2_is_div_4)+
 proof -
   fix s :: globals
-  let ?node_offset = "(ucast (ptr_val (node_' s) - symbol_table ''heap'') div 4) :: 32 signed word"
+  let ?node = "ptr_val (node_' s)" and ?heap = "symbol_table ''heap''"
   let ?node_size = "size_C (h_val (hrs_mem (t_hrs_' s)) (node_' s))"
   let ?blocks = "(scast (ucast n div 4 :: 32 signed word) + 1) :: 16 word"
-  assume a1: "uint (scast ?node_offset :: 16 word) + uint ?node_size = 2047"
+  assume a1: "uint (scast (ucast (?node - ?heap) div 4)) + uint ?node_size = 2047"
      and a2: "\<not> uint ?node_size \<le> uint ?blocks"
   from a2 have "uint ?blocks < uint ?node_size" by auto
-  with a1 have "uint (scast ?node_offset :: 16 word) + uint ?blocks < 2047" by auto
-  moreover have "uint ((scast ?node_offset :: 16 word) + ?blocks) \<le>
-    uint (scast ?node_offset :: 16 word) + uint ?blocks" by (simp add: uint_add_le)
-  ultimately have "uint ((scast ?node_offset :: 16 word) + ?blocks) < 2047" by auto
-  hence "nat (uint ((scast ?node_offset :: 16 word) + ?blocks)) < 2047" by auto
-  thus "nat (uint (2 + (scast ?node_offset + scast (ucast n div 4)))) < 2048"
-    apply unat_arith
+  have "uint (?blocks) * 4 + 4 = uint (?blocks + 1) * 4" apply unat_arith
+  have "uint ((scast ((ucast (?node + (of_int (uint (?blocks)) * 4 + 4) - ?heap) :: 32 signed word) div 4)) :: 16 word)
+    = uint ((scast ((ucast (?node - ?heap) :: 32 signed word) div 4)) :: 16 word) + uint (?blocks) + 1"
+    
+  have "uint ((scast ((ucast (?node + (of_int (uint (?blocks)) * 4 + 4) - ?heap) :: 32 signed word) div 4)) :: 16 word) +
+         uint (?node_size - (?blocks + 1)) = 2047" sorry
+  thus "uint ((scast ((ucast (?node + (of_int (uint (?blocks)) * 4 + 4) - ?heap) :: 32 signed word) div 4)) :: 16 word) +
+         uint (?node_size - (2 + (scast ((ucast n div 4) :: 32 signed word)) :: 16 word)) = 2047" by simp
 
 
 lemma alloc'_hoare: "n > 0 \<Longrightarrow> \<lbrace>alloc'_invs\<rbrace> alloc' n
