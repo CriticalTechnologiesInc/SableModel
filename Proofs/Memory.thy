@@ -1,63 +1,53 @@
 theory Memory
 imports
   "../AutoCorres/Impl"
+  "../lib/ExtraLemmas"
 begin
 
 context sable_isa
 begin
 abbreviation "HEAP_SIZE \<equiv> 1024" (* in mem_nodes *)
-abbreviation "heap \<equiv> Ptr (symbol_table ''heap'') :: mem_node_C ptr"
+type_synonym HEAP_SIZE_t = 1024
+abbreviation "heap \<equiv> Ptr (symbol_table ''heap'') :: (mem_node_C[HEAP_SIZE_t]) ptr"
+abbreviation "heap_ptr \<equiv> Ptr (symbol_table ''heap'') :: mem_node_C ptr"
 end
 
 locale sable_m = sable_isa +
-assumes heap_guard: "\<forall>p \<in> set (array_addrs heap HEAP_SIZE). c_guard p"
+assumes heap_guard: "c_guard heap"
 begin
+
+lemma heap_ptr_guard: "c_guard heap_ptr"
+proof -
+  have "c_guard (((ptr_coerce heap) :: mem_node_C ptr) +\<^sub>p 0)"
+    apply (rule c_guard_array)
+    using heap_guard apply auto
+    done
+  thus ?thesis by simp
+qed
+
+lemma heap_guard_set_array_addrs: "\<forall>p \<in> set (array_addrs heap_ptr HEAP_SIZE). c_guard p"
+proof (auto simp add: set_array_addrs)
+  fix k :: nat
+  assume "k < 1024"
+  have "c_guard ((ptr_coerce heap :: mem_node_C ptr) +\<^sub>p int k)"
+    apply (rule c_guard_array)
+    using heap_guard and `k < 1024` apply auto
+    done
+  thus "c_guard (heap_ptr +\<^sub>p int k)" by auto
+qed
 
 definition
   heap_invs :: "globals \<Rightarrow> bool"
 where
-  "heap_invs s \<equiv>
-    node_' s \<in> set (array_addrs heap HEAP_SIZE) \<and>
-    (let (node_size :: 32 word) = mem_node_C.size_C (h_val (hrs_mem (t_hrs_' s)) (node_' s)) in
-    node_' s +\<^sub>p uint node_size = heap +\<^sub>p (HEAP_SIZE - 1))"
-
-(*declare [[show_types]]
-declare [[show_sorts]]
-declare [[show_consts]]*)
+  "heap_invs s \<equiv> node_' s \<in> set (array_addrs heap_ptr HEAP_SIZE) \<and>
+    mem_node_C.size_C (h_val (hrs_mem (t_hrs_' s)) (node_' s)) < HEAP_SIZE \<and>
+    node_' s +\<^sub>p uint (mem_node_C.size_C (h_val (hrs_mem (t_hrs_' s)) (node_' s))) = heap_ptr +\<^sub>p (HEAP_SIZE - 1)"
 
 lemma init_heap'_invs: "\<lbrace>\<lambda>s. node_' s = NULL\<rbrace> init_heap' \<lbrace>\<lambda>_ s. (heap_invs s)\<rbrace>!"
 unfolding init_heap'_def heap_invs_def fail'_def FUNCTION_BODY_NOT_IN_INPUT_C_FILE_def
 apply wp
-apply (auto simp add: ptr_sub_def h_val_id intvl_self heap_guard)
-apply (rule c_guard_array_c_guard)
-using heap_guard apply (simp add: set_array_addrs)
-apply blast
-done
-
-lemma shiftr1_is_div_2': "shiftr1 (x :: ('a :: len) word) = x div 2"
-apply (simp only: shiftr1_unfold)
-using shiftr1_is_div_2 by auto
-
-lemma shiftr2_is_div_4:
-assumes "2 < len_of TYPE('a)"
-shows "(x :: ('a :: len) word) >> 2 = x div 4"
-proof -
-  from assms have "x >> 2 = x div 2 ^ 2" by (simp add: shiftr_div_2n_w word_size)
-  thus ?thesis by auto
-qed
-
-lemma shiftr3_is_div_8:
-assumes "3 < len_of TYPE('a)"
-shows "(x :: ('a :: len) word) >> 3 = x div 8"
-proof -
-  from assms have "x >> 3 = x div 2 ^ 3" by (simp add: shiftr_div_2n_w word_size)
-  thus ?thesis by auto
-qed
-
-lemma ptr_add_array_addrs: "0 \<le> i \<Longrightarrow> i < of_nat n \<Longrightarrow> p +\<^sub>p i \<in> set (array_addrs p n)"
-apply (simp add: set_array_addrs)
-apply (rule_tac x="nat i" in exI)
-apply simp
+using heap_guard apply (auto simp add: ptr_sub_def h_val_id intvl_self)
+using heap_ptr_guard apply simp
 done
 
 lemma alloc'_invs: "align_of TYPE('a :: c_type) dvd align_of TYPE(mem_node_C) \<Longrightarrow> n > 0
@@ -70,35 +60,65 @@ apply (simp add: h_val_id not_le)
 proof clarify
   fix s :: globals
   let ?size = "size_C (h_val (hrs_mem (t_hrs_' s)) (node_' s)) :: 32 word"
-  assume node: "node_' s \<in> set (array_addrs heap 1024)"
-     and size: "node_' s +\<^sub>p uint ?size = heap +\<^sub>p 1023"
+  let ?blocks = "(n >> 3) + 1 :: 32 word"
+  assume node: "node_' s \<in> set (array_addrs heap_ptr HEAP_SIZE)"
+     and node_size: "node_' s +\<^sub>p uint ?size = heap_ptr +\<^sub>p 1023"
+     and size: "size_C (h_val (hrs_mem (t_hrs_' s)) (node_' s)) < HEAP_SIZE"
      and align: "align_of TYPE('a) dvd align_of TYPE(mem_node_C)" and "0 < n"
+  from node obtain i where i: "node_' s = heap_ptr +\<^sub>p (int i)" and "i < HEAP_SIZE"
+    using array_addrs_ptr_ex by blast
+  with node_size have heap_i: "heap_ptr +\<^sub>p (int i + uint ?size) = heap_ptr +\<^sub>p 1023"
+    unfolding ptr_add_def by simp
+  moreover have "(heap_ptr +\<^sub>p (int i + uint ?size) = heap_ptr +\<^sub>p 1023)
+                  = (int i + uint ?size = 1023)"
+    apply (rule ptr_arith_index) using size and `i < HEAP_SIZE`
+    apply auto
+    apply uint_arith
+    done
+  ultimately have i_size: "int i + uint ?size = 1023" by auto
   show "(?size \<le> (n >> 3) + 1 \<longrightarrow> c_guard (node_' s)) \<and>
-        ((n >> 3) + 1 < ?size \<longrightarrow> node_' s +\<^sub>p uint (2 + (n >> 3)) \<in> set (array_addrs heap 1024) \<and>
-        node_' s +\<^sub>p uint (2 + (n >> 3)) +\<^sub>p uint (?size - (2 + (n >> 3))) = heap +\<^sub>p 1023 \<and>
+        ((n >> 3) + 1 < ?size \<longrightarrow> node_' s +\<^sub>p uint (2 + (n >> 3)) \<in> set (array_addrs heap_ptr HEAP_SIZE) \<and>
+        ?size - (2 + (n >> 3)) < HEAP_SIZE \<and>
+        node_' s +\<^sub>p uint (2 + (n >> 3)) +\<^sub>p uint (?size - (2 + (n >> 3))) = heap_ptr +\<^sub>p 1023 \<and>
         (ptr_val (node_' s +\<^sub>p 1) \<noteq> 0 \<longrightarrow> c_guard (ptr_coerce (node_' s +\<^sub>p 1) :: 'a ptr)) \<and>
         c_guard (node_' s +\<^sub>p uint (2 + (n >> 3))) \<and> c_guard (node_' s))"
   proof safe
-    show "c_guard (node_' s)" using heap_guard and node by auto
+    show "c_guard (node_' s)" using heap_guard_set_array_addrs and node ..
+  next
+    assume "?blocks < ?size"
+    hence "?blocks + 1 \<le> ?size" by unat_arith
+    hence "uint (?blocks + 1) \<le> uint ?size" by uint_arith
+    moreover from `i < 1024` have "int i < 1024" by auto
+    moreover from size have "uint ?size < 1024" by uint_arith
+    ultimately have "int i + uint (?blocks + 1) < HEAP_SIZE" using i_size by auto
+    hence "heap_ptr +\<^sub>p (int i + uint (?blocks + 1)) \<in> set (array_addrs heap_ptr HEAP_SIZE)" by auto
+    with i show "node_' s +\<^sub>p uint (2 + (n >> 3) :: 32 word) \<in> set (array_addrs heap_ptr HEAP_SIZE)"
+      unfolding ptr_add_def by (simp add: semiring_normalization_rules(25))
+  next
+    show "node_' s +\<^sub>p uint (2 + (n >> 3)) +\<^sub>p uint (?size - (2 + (n >> 3))) = heap_ptr +\<^sub>p 1023"
+      using node_size unfolding ptr_add_def by unat_arith
+  next
+    assume "ptr_val (node_' s +\<^sub>p 1) \<noteq> 0"
+    moreover from node and heap_guard_set_array_addrs have "c_guard (node_' s)" by auto
+    ultimately show "c_guard (ptr_coerce (node_' s +\<^sub>p 1) :: 'a ptr)" using align
+      unfolding c_guard_def c_null_guard_def ptr_aligned_def ptr_add_def apply auto
+      apply unat_arith sorry
+  next
+    assume "?blocks < ?size"
+    hence "?blocks + 1 \<le> ?size" by unat_arith
+    thus "?size - (2 + (n >> 3)) < 0x400" using size
+      apply auto
+      apply unat_arith
+      done
   next
     assume "(n >> 3) + 1 < ?size"
     hence "(n >> 3) + 2 \<le> ?size" by unat_arith
-    moreover from size have "node_' s +\<^sub>p uint ?size \<in> set (array_addrs heap 1024)"
-      apply (simp add: set_array_addrs)
-      apply (rule_tac x=1023 in exI)
-      apply simp
-      done
-    ultimately show "node_' s +\<^sub>p uint (2 + (n >> 3)) \<in> set (array_addrs heap 1024)"
-      using node and heap_guard sorry
+    with `((n >> 3) + 1 < size_C (h_val (hrs_mem (t_hrs_' s)) (node_' s))) \<Longrightarrow>
+      node_' s +\<^sub>p uint (2 + (n >> 3)) \<in> set (array_addrs heap_ptr 1024)`
+    with heap_guard and size show "c_guard (node_' s +\<^sub>p uint (2 + (n >> 3)))" sorry
   next
-    show "node_' s +\<^sub>p uint (2 + (n >> 3)) +\<^sub>p uint (?size - (2 + (n >> 3))) = heap +\<^sub>p 1023"
-      using size unfolding ptr_add_def by unat_arith
-  next
-    assume "ptr_val (node_' s +\<^sub>p 1) \<noteq> 0"
-    moreover from node and heap_guard have "c_guard (node_' s)" by auto
-    ultimately show "c_guard (ptr_coerce (node_' s +\<^sub>p 1) :: 'a ptr)" using align
-      unfolding c_guard_def c_null_guard_def ptr_aligned_def ptr_add_def apply auto
-      apply unat_arith
+    from node and heap_guard_set_array_addrs show "c_guard (node_' s)" by auto
+qed
 
 (*apply (auto simp add: h_val_field_from_bytes shiftr2_is_div_4 h_val_id)
 apply (simp add: ptr_add_def ptr_sub_def)
