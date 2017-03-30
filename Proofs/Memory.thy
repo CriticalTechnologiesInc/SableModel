@@ -40,15 +40,27 @@ definition
   heap_invs :: "globals \<Rightarrow> bool"
 where
   "heap_invs s \<equiv> node_' s \<in> set (array_addrs heap_ptr HEAP_SIZE) \<and>
-    mem_node_C.size_C (h_val (hrs_mem (t_hrs_' s)) (node_' s)) < HEAP_SIZE \<and>
-    node_' s +\<^sub>p uint (mem_node_C.size_C (h_val (hrs_mem (t_hrs_' s)) (node_' s))) = heap_ptr +\<^sub>p (HEAP_SIZE - 1)"
+    (let node_size = mem_node_C.size_C (h_val (hrs_mem (t_hrs_' s)) (node_' s)) in
+    node_size < HEAP_SIZE \<and> node_' s +\<^sub>p uint (node_size) = heap_ptr +\<^sub>p (HEAP_SIZE - 1) \<and>
+    (\<forall>p \<in> {ptr_val (node_' s +\<^sub>p 1)..+unat node_size * size_of TYPE(mem_node_C)}.
+      snd (hrs_htd (t_hrs_' s) p) = Map.empty))"
 
-lemma init_heap'_invs: "\<lbrace>\<lambda>s. node_' s = NULL\<rbrace> init_heap' \<lbrace>\<lambda>_ s. (heap_invs s)\<rbrace>!"
+lemma init_heap'_invs:
+  "\<lbrace>\<lambda>s. node_' s = NULL \<and> (\<forall>p \<in> {ptr_val heap_ptr..+HEAP_SIZE * size_of TYPE(mem_node_C)}.
+      snd (hrs_htd (t_hrs_' s) p) = Map.empty)\<rbrace> init_heap' \<lbrace>\<lambda>_ s. (heap_invs s)\<rbrace>!"
 unfolding init_heap'_def heap_invs_def fail'_def FUNCTION_BODY_NOT_IN_INPUT_C_FILE_def
 apply wp
-using heap_guard apply (auto simp add: ptr_sub_def h_val_id intvl_self)
+using heap_guard apply (auto simp add: ptr_add_def ptr_sub_def h_val_id intvl_self)
+defer
 using heap_ptr_guard apply simp
-done
+proof -
+  fix s :: globals and q :: "32 word"
+  assume empty: "\<forall>p \<in> {symbol_table ''heap''..+8192}. snd (hrs_htd (t_hrs_' s) p) = Map.empty"
+     and q: "q \<in> {symbol_table ''heap'' + 8..+8184}"
+  from q have "q \<in> {symbol_table ''heap''..+8192}"
+    by (rule_tac y=8 in intvl_plus_sub_offset, auto)
+  with empty show "snd (hrs_htd (t_hrs_' s) q) = Map.empty" by blast
+qed
 
 lemma size_of_le_n[dest]: "size_of TYPE('a :: wf_type) \<le> unat (n :: ('b :: len) word) \<Longrightarrow> 0 < n"
 proof -
@@ -86,6 +98,7 @@ proof clarify
      and align: "align_of TYPE('a) dvd align_of TYPE(mem_node_C)"
      and n: "size_of TYPE('a) \<le> unat n"
      and blocks_size: "(n >> 3) + 1 < ?size"
+     and empty: "\<forall>p\<in>{ptr_val (node_' s +\<^sub>p 1)..+unat ?size * 8}. snd (hrs_htd (t_hrs_' s) p) = Map.empty"
   from blocks_size have blocksp1_size: "?blocks + 1 \<le> ?size" by unat_arith
   from blocks_size and size have blocks_bound: "?blocks < HEAP_SIZE - 1" by unat_arith
   from node obtain i where i: "node_' s = heap_ptr +\<^sub>p (int i)" and "i < HEAP_SIZE"
@@ -118,6 +131,8 @@ proof clarify
   show "node_' s +\<^sub>p uint (2 + (n >> 3)) \<in> set (array_addrs heap_ptr HEAP_SIZE) \<and>
         ?size - (2 + (n >> 3)) < HEAP_SIZE \<and>
         node_' s +\<^sub>p uint (2 + (n >> 3)) +\<^sub>p uint (?size - (2 + (n >> 3))) = heap_ptr +\<^sub>p 1023 \<and>
+        (\<forall>p \<in> {ptr_val (node_' s +\<^sub>p uint (2 + (n >> 3)) +\<^sub>p 1)..+unat (?size - (2 + (n >> 3))) * 8}.
+             snd (hrs_htd (t_hrs_' s) p) = Map.empty) \<and>
         (ptr_val (node_' s +\<^sub>p 1) \<noteq> 0 \<longrightarrow>
           heap_ptr_valid (ptr_retyp (ptr_coerce (node_' s +\<^sub>p 1) :: 'a ptr) (hrs_htd (t_hrs_' s)))
            (ptr_coerce (node_' s +\<^sub>p 1) :: 'a ptr)) \<and>
