@@ -63,12 +63,12 @@ qed
 declare [[show_consts]]
 declare [[show_sorts]]*)
 
-lemma alloc'_invs: "align_of TYPE('a :: wf_type) dvd align_of TYPE(mem_node_C)
+lemma alloc'_invs: "align_of TYPE('a :: mem_type) dvd align_of TYPE(mem_node_C)
   \<Longrightarrow> size_of TYPE('a) \<le> unat n
   \<Longrightarrow> \<lbrace>\<lambda>s. heap_invs s\<rbrace> alloc' n
-      \<lbrace>\<lambda>r s. heap_invs s \<and>
-      (ptr_val r \<noteq> 0 \<longrightarrow> heap_ptr_valid (hrs_htd (t_hrs_' s)) ((ptr_coerce r) :: 'a ptr))\<rbrace>!"
-unfolding alloc'_def heap_invs_def fail'_def FUNCTION_BODY_NOT_IN_INPUT_C_FILE_def
+      \<lbrace>\<lambda>r s. heap_invs s \<and> (let ptr = (ptr_coerce r) :: 'a ptr in
+        ptr_val r \<noteq> 0 \<longrightarrow> heap_ptr_valid (ptr_retyp ptr (hrs_htd (t_hrs_' s))) ptr)\<rbrace>!"
+unfolding alloc'_def heap_invs_def fail'_def FUNCTION_BODY_NOT_IN_INPUT_C_FILE_def Let_def
 apply (simp add: h_val_field_from_bytes)
 apply wp
 apply (simp add: h_val_id not_le word_gt_a_gt_0)
@@ -118,8 +118,9 @@ proof clarify
   show "node_' s +\<^sub>p uint (2 + (n >> 3)) \<in> set (array_addrs heap_ptr HEAP_SIZE) \<and>
         ?size - (2 + (n >> 3)) < HEAP_SIZE \<and>
         node_' s +\<^sub>p uint (2 + (n >> 3)) +\<^sub>p uint (?size - (2 + (n >> 3))) = heap_ptr +\<^sub>p 1023 \<and>
-        (ptr_val (node_' s +\<^sub>p 1) \<noteq> 0
-          \<longrightarrow> heap_ptr_valid (hrs_htd (t_hrs_' s)) ((ptr_coerce (node_' s +\<^sub>p 1) :: 'a ptr))) \<and>
+        (ptr_val (node_' s +\<^sub>p 1) \<noteq> 0 \<longrightarrow>
+          heap_ptr_valid (ptr_retyp (ptr_coerce (node_' s +\<^sub>p 1) :: 'a ptr) (hrs_htd (t_hrs_' s)))
+           (ptr_coerce (node_' s +\<^sub>p 1) :: 'a ptr)) \<and>
         c_guard (node_' s +\<^sub>p uint (2 + (n >> 3))) \<and> c_guard (node_' s)"
   proof safe
     show "c_guard (node_' s)" using heap_guard_set_array_addrs and node ..
@@ -133,13 +134,23 @@ proof clarify
     show "?size - (2 + (n >> 3)) < 0x400" using blocksp1_size and size
       by (auto, unat_arith)
   next
+    let ?ptrc = "ptr_coerce (node_' s +\<^sub>p 1) :: 'a ptr"
     assume "ptr_val (node_' s +\<^sub>p 1) \<noteq> 0"
     from node and heap_guard_set_array_addrs have "c_guard (node_' s)" by auto
-    show "heap_ptr_valid (hrs_htd (t_hrs_' s)) (ptr_coerce (node_' s +\<^sub>p 1) :: 'a ptr)"
+    show "heap_ptr_valid (ptr_retyp ?ptrc (hrs_htd (t_hrs_' s))) ?ptrc"
     unfolding heap_ptr_valid_def c_guard_def
     proof safe
-      show "valid_simple_footprint (hrs_htd (t_hrs_' s))
-        (ptr_val (ptr_coerce (node_' s +\<^sub>p (1::int)))) (typ_uinfo_t TYPE('a))" sorry
+      show "valid_simple_footprint (ptr_retyp ?ptrc (hrs_htd (t_hrs_' s))) (ptr_val ?ptrc)
+            (typ_uinfo_t TYPE('a))"
+      apply (rule TypHeapSimple.valid_simple_footprint_ptr_retyp) defer
+      apply (simp, metis Suc_le_eq mem_type_simps(3) size_of_def)
+      apply (simp add: size_of_tag)
+      proof clarify
+        fix k :: nat
+        assume "k < size_td (typ_uinfo_t TYPE('a))"
+        show "snd (hrs_htd (t_hrs_' s) (ptr_val (ptr_coerce (node_' s +\<^sub>p 1)) + of_nat k)) = Map.empty"
+        sorry
+      qed
     next
       from `c_guard (node_' s)` have "ptr_aligned (node_' s +\<^sub>p 1)"
         unfolding c_guard_def by (simp add: CTypes.ptr_aligned_plus)
