@@ -128,6 +128,8 @@ proof clarify
       using unat_add_lem by blast }
   ultimately have i_blocks_u: "i + unat (n >> 3) + unat (2 :: 32 word) < HEAP_SIZE"
     by (simp, unat_arith)
+  with n and `i < HEAP_SIZE` have n_bound: "n < HEAP_SIZE * 8"
+    by (simp add: shiftr3_is_div_8, unat_arith)
   show "node_' s +\<^sub>p uint (2 + (n >> 3)) \<in> set (array_addrs heap_ptr HEAP_SIZE) \<and>
         ?size - (2 + (n >> 3)) < HEAP_SIZE \<and>
         node_' s +\<^sub>p uint (2 + (n >> 3)) +\<^sub>p uint (?size - (2 + (n >> 3))) = heap_ptr +\<^sub>p 1023 \<and>
@@ -163,8 +165,10 @@ proof clarify
       proof clarify
         fix k :: nat
         assume "k < size_td (typ_uinfo_t TYPE('a))"
-        show "snd (hrs_htd (t_hrs_' s) (ptr_val (ptr_coerce (node_' s +\<^sub>p 1)) + of_nat k)) = Map.empty"
-        sorry
+        with n have "k < unat n" by (simp add: size_of_def)
+        with blocks_size have "k < unat ?size * 8" by (simp add: shiftr3_is_div_8, unat_arith)
+        with empty show "snd (hrs_htd (t_hrs_' s) (ptr_val ?ptrc + of_nat k)) = Map.empty"
+          using intvlI by (simp, blast)
       qed
     next
       from `c_guard (node_' s)` have "ptr_aligned (node_' s +\<^sub>p 1)"
@@ -184,14 +188,8 @@ proof clarify
           by (blast dest: intvlD)
         with i have x: "x = ptr_val (heap_ptr +\<^sub>p int i +\<^sub>p 1) + of_nat k" by auto
         from `k < ?sz` and n have "k < unat n" by auto
-        hence k: "k + 1 < unat ?blocks * 8"
-        apply (simp add: shiftr3_is_div_8)
-        apply unat_arith
-        done
-        from i_blocks_u have "8 * i + unat n < 8176"
-        apply (simp add: shiftr3_is_div_8)
-        apply unat_arith
-        done
+        hence k: "k + 1 < unat ?blocks * 8" by (simp add: shiftr3_is_div_8, unat_arith)
+        from i_blocks_u have "8 * i + unat n < 8176" by (simp add: shiftr3_is_div_8, unat_arith)
         show "x \<in> {ptr_val heap_ptr..+1024 * size_of TYPE(mem_node_C)}"
         apply (rule intvl_inter_le [where k=0 and ka="(i + 1) * size_of TYPE(mem_node_C) + k"])
         apply auto
@@ -207,6 +205,25 @@ proof clarify
   next
     show "c_guard (node_' s +\<^sub>p uint (2 + (n >> 3)))"
       using new_node_in_heap and heap_guard_set_array_addrs by auto
+  next
+    fix p :: "32 word"
+    assume p: "p \<in> {ptr_val (node_' s +\<^sub>p uint (2 + (n >> 3)) +\<^sub>p 1)..+unat (?size - (2 + (n >> 3))) * 8}"
+    moreover
+    { have "unat (?size - (2 + (n >> 3))) = unat ?size - unat (2 + (n >> 3))"
+        using size and blocks_size by unat_arith
+      hence "unat (?size - (2 + (n >> 3))) * 8 = unat ?size * 8 - unat (2 + (n >> 3)) * 8" by simp }
+    moreover
+    { have "unat (2 + (n >> 3)) * unat (8 :: 32 word) < 2 ^ len_of TYPE(32)"
+        using n_bound by (simp add: shiftr3_is_div_8, unat_arith)
+      hence "unat ((2 + (n >> 3)) * 8) = unat (2 + (n >> 3)) * unat (8 :: 32 word)"
+        by (subst(asm) unat_mult_lem)
+      hence "unat (2 + (n >> 3)) * 8 = unat ((2 + (n >> 3)) * 8)" by auto }
+    ultimately have "p \<in> {ptr_val (node_' s +\<^sub>p 1) + ((2 + (n >> 3)) * 8)..+
+                            unat ?size * 8 - unat ((2 + (n >> 3)) * 8)}"
+      unfolding ptr_add_def by simp
+    hence "p \<in> {ptr_val (node_' s +\<^sub>p 1)..+unat ?size * 8}"
+      by (drule_tac y="(2 + (n >> 3)) * 8" in intvl_plus_sub_offset)
+    with empty show "snd (hrs_htd (t_hrs_' s) p) = Map.empty" by blast
   qed
 qed
 
