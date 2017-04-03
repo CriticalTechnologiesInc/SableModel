@@ -42,7 +42,15 @@ where
   "liftC st P \<equiv> \<lambda>s. \<forall>g. s = st g \<longrightarrow> P g"
 
 lemma hoare_liftC[intro]:
-  "\<lbrace>P\<rbrace> m \<lbrace>Q\<rbrace> \<Longrightarrow> \<lbrace>liftC st P\<rbrace> exec_concrete st m \<lbrace>\<lambda>r s. liftC st (Q r) s\<rbrace>"
+  "\<lbrace>P\<rbrace> m \<lbrace>\<lambda>r s. \<forall>t. st s = t \<longrightarrow> Q r t\<rbrace> \<Longrightarrow> \<lbrace>liftC st P\<rbrace> exec_concrete st m \<lbrace>Q\<rbrace>"
+unfolding liftC_def
+apply wp
+unfolding valid_def
+apply auto
+done
+
+(*lemma hoare_liftC[intro]:
+  "\<lbrace>P\<rbrace> m \<lbrace>\<lambda>r s. \<forall>t. st s = t \<longrightarrow> Q r t\<rbrace> \<Longrightarrow> \<lbrace>liftC st P\<rbrace> exec_concrete st m \<lbrace>\<lambda>r s. liftC st (Q r) s\<rbrace>"
 unfolding liftC_def
 apply wp
 unfolding valid_def
@@ -55,8 +63,7 @@ proof clarify
   from pre have "P g" by blast
   with post and exec have "Q r g'" by blast
   show "Q r g''"
-oops
-
+oops*)
 
 definition
   heap_invs :: "globals \<Rightarrow> bool"
