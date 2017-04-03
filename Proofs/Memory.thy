@@ -100,6 +100,105 @@ qed
 declare [[show_consts]]
 declare [[show_sorts]]*)
 
+lemma fail'_wp: "\<lbrace>\<lambda>x. True\<rbrace> fail' \<lbrace>Q\<rbrace>"
+unfolding fail'_def FUNCTION_BODY_NOT_IN_INPUT_C_FILE_def by wp
+
+lemma alloc'_invs: "0 < n \<Longrightarrow> \<lbrace>\<lambda>s. heap_invs s\<rbrace> alloc' n \<lbrace>\<lambda>r s. heap_invs s\<rbrace>"
+unfolding alloc'_def heap_invs_def Let_def
+apply (simp add: h_val_field_from_bytes)
+apply wp
+apply (simp add: h_val_id not_le word_gt_a_gt_0)
+apply (clarsimp simp add: heap_guard_set_array_addrs)
+proof -
+  fix s :: globals
+  let ?size = "size_C (h_val (hrs_mem (t_hrs_' s)) (node_' s)) :: 32 word"
+  let ?blocks = "(n >> 3) + 1 :: 32 word"
+  assume node: "node_' s \<in> set (array_addrs heap_ptr HEAP_SIZE)"
+     and node_size: "node_' s +\<^sub>p uint ?size = heap_ptr +\<^sub>p 1023"
+     and size: "size_C (h_val (hrs_mem (t_hrs_' s)) (node_' s)) < HEAP_SIZE"
+     and blocks_size: "(n >> 3) + 1 < ?size"
+     and n: "0 < n"
+     and empty: "\<forall>p \<in> {ptr_val (node_' s +\<^sub>p 1)..+unat ?size * 8}. snd (hrs_htd (t_hrs_' s) p) = Map.empty"
+  from blocks_size have blocksp1_size: "?blocks + 1 \<le> ?size" by unat_arith
+  from blocks_size and size have blocks_bound: "?blocks < HEAP_SIZE - 1" by unat_arith
+  from node obtain i where i: "node_' s = heap_ptr +\<^sub>p (int i)" and "i < HEAP_SIZE"
+    using array_addrs_ptr_ex by blast
+  with node_size have heap_i: "heap_ptr +\<^sub>p (int i + uint ?size) = heap_ptr +\<^sub>p 1023"
+    unfolding ptr_add_def by simp
+  moreover have "(heap_ptr +\<^sub>p (int i + uint ?size) = heap_ptr +\<^sub>p 1023)
+                  = (int i + uint ?size = 1023)"
+    apply (rule ptr_arith_index) using size and `i < HEAP_SIZE`
+    apply auto
+    apply uint_arith
+    done
+  ultimately have i_size: "int i + uint ?size = 1023" by auto
+  from `i < 1024` have "int i < 1024" by auto
+  moreover from size have "uint ?size < 1024" by uint_arith
+  ultimately have i_blocks: "int i + uint (?blocks + 1) < HEAP_SIZE" using i_size and blocksp1_size
+    by (simp, uint_arith)
+  hence "heap_ptr +\<^sub>p (int i + uint (?blocks + 1)) \<in> set (array_addrs heap_ptr HEAP_SIZE)" by auto
+  with i have new_node_in_heap: "node_' s +\<^sub>p uint (?blocks + 1) \<in> set (array_addrs heap_ptr HEAP_SIZE)"
+    unfolding ptr_add_def by (simp add: semiring_normalization_rules(25))
+  from i_blocks have "i + unat (?blocks + 1) < HEAP_SIZE"
+    by (simp add: uint_nat)
+  moreover
+  { from blocks_bound have "unat (n >> 3) + unat (2 :: 32 word) < 2 ^ len_of TYPE(32)"
+      by (simp add: shiftr3_is_div_8, unat_arith)
+    hence "unat ((n >> 3) + 2) = unat (n >> 3) + unat (2 :: 32 word)"
+      using unat_add_lem by blast }
+  ultimately have i_blocks_u: "i + unat (n >> 3) + unat (2 :: 32 word) < HEAP_SIZE"
+    by (simp, unat_arith)
+  with `i < HEAP_SIZE` have n_bound: "n < HEAP_SIZE * 8"
+    by (simp add: shiftr3_is_div_8, unat_arith)
+  show "node_' s +\<^sub>p uint (2 + (n >> 3)) \<in> set (array_addrs heap_ptr HEAP_SIZE) \<and>
+        ?size - (2 + (n >> 3)) < HEAP_SIZE \<and>
+        node_' s +\<^sub>p uint (2 + (n >> 3)) +\<^sub>p uint (?size - (2 + (n >> 3))) = heap_ptr +\<^sub>p 1023 \<and>
+        (\<forall>p \<in> {ptr_val (node_' s +\<^sub>p uint (2 + (n >> 3)) +\<^sub>p 1)..+unat (?size - (2 + (n >> 3))) * 8}.
+             snd (hrs_htd (t_hrs_' s) p) = Map.empty)"
+  proof safe
+    show "node_' s +\<^sub>p uint (2 + (n >> 3) :: 32 word) \<in> set (array_addrs heap_ptr HEAP_SIZE)"
+      using new_node_in_heap by simp
+  next
+    show "node_' s +\<^sub>p uint (2 + (n >> 3)) +\<^sub>p uint (?size - (2 + (n >> 3))) = heap_ptr +\<^sub>p 1023"
+      using node_size unfolding ptr_add_def by unat_arith
+  next
+    show "?size - (2 + (n >> 3)) < 0x400" using blocksp1_size and size
+      by (auto, unat_arith)
+  next
+    fix p :: "32 word"
+    assume p: "p \<in> {ptr_val (node_' s +\<^sub>p uint (2 + (n >> 3)) +\<^sub>p 1)..+unat (?size - (2 + (n >> 3))) * 8}"
+    moreover
+    { have "unat (?size - (2 + (n >> 3))) = unat ?size - unat (2 + (n >> 3))"
+        using size and blocks_size by unat_arith
+      hence "unat (?size - (2 + (n >> 3))) * 8 = unat ?size * 8 - unat (2 + (n >> 3)) * 8" by simp }
+    moreover
+    { have "unat (2 + (n >> 3)) * unat (8 :: 32 word) < 2 ^ len_of TYPE(32)"
+        using n_bound by (simp add: shiftr3_is_div_8, unat_arith)
+      hence "unat ((2 + (n >> 3)) * 8) = unat (2 + (n >> 3)) * unat (8 :: 32 word)"
+        by (subst(asm) unat_mult_lem)
+      hence "unat (2 + (n >> 3)) * 8 = unat ((2 + (n >> 3)) * 8)" by auto }
+    ultimately have "p \<in> {ptr_val (node_' s +\<^sub>p 1) + ((2 + (n >> 3)) * 8)..+
+                            unat ?size * 8 - unat ((2 + (n >> 3)) * 8)}"
+      unfolding ptr_add_def by simp
+    hence "p \<in> {ptr_val (node_' s +\<^sub>p 1)..+unat ?size * 8}"
+      by (drule_tac y="(2 + (n >> 3)) * 8" in intvl_plus_sub_offset)
+    with empty show "snd (hrs_htd (t_hrs_' s) p) = Map.empty" by blast
+  qed
+qed
+
+lemma alloc'_no_fail: "0 < n \<Longrightarrow> no_fail heap_invs (alloc' n)"
+apply (rule validNF_no_fail [where Q="\<top>\<top>"])
+unfolding heap_invs_def alloc'_def
+apply (simp add: h_val_field_from_bytes)
+apply wp
+apply simp
+apply (insert alloc'_invs)
+unfolding heap_invs_def
+using heap_guard_set_array_addrs apply blas
+  next
+    show "c_guard (node_' s +\<^sub>p uint (2 + (n >> 3)))"
+      using new_node_in_heap and heap_guard_set_array_addrs by auto
+
 lemma alloc'_invs: "align_of TYPE('a :: mem_type) dvd align_of TYPE(mem_node_C)
   \<Longrightarrow> size_of TYPE('a) \<le> unat n
   \<Longrightarrow> \<lbrace>\<lambda>s. heap_invs s\<rbrace> alloc' n
