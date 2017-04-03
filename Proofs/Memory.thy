@@ -37,6 +37,28 @@ proof (auto simp add: set_array_addrs)
 qed
 
 definition
+  liftC :: "('a \<Rightarrow> 'c) \<Rightarrow> ('a \<Rightarrow> bool) \<Rightarrow> ('c \<Rightarrow> bool)"
+where
+  "liftC st P \<equiv> \<lambda>s. \<forall>g. s = st g \<longrightarrow> P g"
+
+lemma hoare_liftC[intro]:
+  "\<lbrace>P\<rbrace> m \<lbrace>Q\<rbrace> \<Longrightarrow> \<lbrace>liftC st P\<rbrace> exec_concrete st m \<lbrace>\<lambda>r s. liftC st (Q r) s\<rbrace>"
+unfolding liftC_def
+apply wp
+unfolding valid_def
+proof clarify
+  fix g r g' g''
+  assume post: "\<forall>s. P s \<longrightarrow> (\<forall>(x, y)\<in>fst (m s). Q x y)"
+     and pre: "\<forall>s. st g = st s \<longrightarrow> P s"
+     and exec: "(r, g') \<in> fst (m g)"
+     and st_eq: "st g' = st g''"
+  from pre have "P g" by blast
+  with post and exec have "Q r g'" by blast
+  show "Q r g''"
+oops
+
+
+definition
   heap_invs :: "globals \<Rightarrow> bool"
 where
   "heap_invs s \<equiv> node_' s \<in> set (array_addrs heap_ptr HEAP_SIZE) \<and>
@@ -45,10 +67,17 @@ where
     (\<forall>p \<in> {ptr_val (node_' s +\<^sub>p 1)..+unat node_size * size_of TYPE(mem_node_C)}.
       snd (hrs_htd (t_hrs_' s) p) = Map.empty))"
 
+definition
+  init_heap_P :: "globals \<Rightarrow> bool"
+where
+  "init_heap_P s \<equiv> node_' s = NULL \<and>
+    (\<forall>p \<in> {ptr_val heap_ptr..+HEAP_SIZE * size_of TYPE(mem_node_C)}.
+     snd (hrs_htd (t_hrs_' s) p) = Map.empty)"
+
 lemma init_heap'_invs:
-  "\<lbrace>\<lambda>s. node_' s = NULL \<and> (\<forall>p \<in> {ptr_val heap_ptr..+HEAP_SIZE * size_of TYPE(mem_node_C)}.
-      snd (hrs_htd (t_hrs_' s) p) = Map.empty)\<rbrace> init_heap' \<lbrace>\<lambda>_ s. (heap_invs s)\<rbrace>!"
-unfolding init_heap'_def heap_invs_def fail'_def FUNCTION_BODY_NOT_IN_INPUT_C_FILE_def
+  "\<lbrace>\<lambda>s. (init_heap_P s)\<rbrace> init_heap' \<lbrace>\<lambda>_ s. (heap_invs s)\<rbrace>!"
+unfolding init_heap'_def heap_invs_def fail'_def
+  FUNCTION_BODY_NOT_IN_INPUT_C_FILE_def init_heap_P_def
 apply wp
 using heap_guard apply (auto simp add: ptr_add_def ptr_sub_def h_val_id intvl_self)
 defer
@@ -61,6 +90,11 @@ proof -
     by (rule_tac y=8 in intvl_plus_sub_offset, auto)
   with empty show "snd (hrs_htd (t_hrs_' s) q) = Map.empty" by blast
 qed
+
+(*lemma init_heap'_invs_abs:
+  "\<lbrace>\<lambda>s. (liftC init_heap_P) s\<rbrace> exec_concrete lift_global_heap init_heap' \<lbrace>\<lambda>_ s. (liftC heap_invs) s\<rbrace>!"
+unfolding liftC_def
+apply wp*)
 
 lemma size_of_le_n[dest]: "size_of TYPE('a :: wf_type) \<le> unat (n :: ('b :: len) word) \<Longrightarrow> 0 < n"
 proof -
@@ -226,6 +260,19 @@ proof clarify
     with empty show "snd (hrs_htd (t_hrs_' s) p) = Map.empty" by blast
   qed
 qed
+
+(*lemma alloc_w32_safe: "\<lbrace>\<lambda>s. (liftC heap_invs) s\<rbrace> exec_concrete lift_global_heap (alloc' 4)
+      \<lbrace>\<lambda>r s. (liftC heap_invs) s \<and> (ptr_val r \<noteq> 0 \<longrightarrow> is_valid_w32 s ((ptr_coerce r) :: (32 word) ptr))\<rbrace>!"
+unfolding liftC_def apply wp
+unfolding validNF_def valid_def
+apply auto
+proof -
+  fix s a b
+  assume "\<forall>g. lift_global_heap s = lift_global_heap g \<longrightarrow> heap_invs g"
+     and "\<forall>g. lift_global_heap b = lift_global_heap g \<longrightarrow> heap_invs g"
+  hence "heap_invs s" and "heap_invs b" by auto
+oops*)
+
 
 end
 
