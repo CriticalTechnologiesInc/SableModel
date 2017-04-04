@@ -80,34 +80,24 @@ proof -
   hence "ptr_val (node_' s) = ptr_val heap_ptr + 1023 * of_nat (size_of TYPE(mem_node_C))
                               - ?size * of_nat (size_of TYPE(mem_node_C))"
     unfolding ptr_add_def apply simp by uint_arith
-  hence "node_' s \<in> set (array_addrs heap_ptr HEAP_SIZE)"
+  thus "node_' s +\<^sub>p i \<in> set (array_addrs heap_ptr HEAP_SIZE)"
     apply (simp add: set_array_addrs)
-    apply (rule_tac x="1023 - unat ?size" in exI)
+    apply (rule_tac x="1023 + nat i - unat ?size" in exI)
     apply auto
     unfolding ptr_add_def
     apply simp
-    apply (subst ptr_val_inj[symmetric])
-    apply simp 
     apply (subst of_nat_diff)
     apply auto
     using size apply unat_arith
-    done
-  hence "ptr_val heap_ptr < ptr_val (node_' s) + ?size * of_nat (size_of TYPE(mem_node_C))"
-  with bound have "i < 1023" by uint_arit
-  have "?size * 8 < HEAP_SIZE * 8"
-    apply (rule word_mult_less_mono1)
-      apply (rule size)
-      apply simp+
-    done
-  (*from bound and lbound have "word_of_int i < ?size" apply uint_arith*)
-  (*with bound have "i < 1023" by uint_arith
-  have "of_int i < (1023 :: 32 word)"
-    apply (subst of_int_of_nat)
     using lbound apply simp
-  apply (rule word_of_nat_less)
-  using `n < 1023` apply unat_arith*)
-  with node_size and size have "ptr_val heap_ptr < ptr_val (node_' s +\<^sub>p i)"
-    unfolding ptr_add_def apply simp apply uint_arit
+    proof -
+      from size and bound and lbound have "nat i < nat (uint ?size)"
+        by uint_arith
+      thus "1023 + nat i - unat (?size) < 1024"
+        by (subst(asm) unat_def[symmetric], auto)
+    qed
+qed
+    
 
 definition
   init_heap_P :: "globals \<Rightarrow> bool"
