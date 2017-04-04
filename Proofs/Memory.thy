@@ -57,11 +57,57 @@ by wp
 definition
   heap_invs :: "globals \<Rightarrow> bool"
 where
-  "heap_invs s \<equiv> node_' s \<in> set (array_addrs heap_ptr HEAP_SIZE) \<and>
+  "heap_invs s \<equiv>
     (let node_size = mem_node_C.size_C (h_val (hrs_mem (t_hrs_' s)) (node_' s)) in
     node_size < HEAP_SIZE \<and> node_' s +\<^sub>p uint (node_size) = heap_ptr +\<^sub>p (HEAP_SIZE - 1) \<and>
     (\<forall>p \<in> {ptr_val (node_' s +\<^sub>p 1)..+unat node_size * size_of TYPE(mem_node_C)}.
       snd (hrs_htd (t_hrs_' s) p) = Map.empty))"
+
+(*declare [[show_types]]
+declare [[show_consts]]
+declare [[show_sorts]]*)
+
+lemma heap_invs_node:
+fixes s :: globals and i :: int
+assumes invs: "heap_invs s" and lbound: "0 \<le> i"
+    and bound: "i < uint (size_C (h_val (hrs_mem (t_hrs_' s)) (node_' s)) :: 32 word)"
+shows "node_' s +\<^sub>p i \<in> set (array_addrs heap_ptr HEAP_SIZE)"
+proof -
+  let ?size = "size_C (h_val (hrs_mem (t_hrs_' s)) (node_' s)) :: 32 word"
+  from invs have node_size: "node_' s +\<^sub>p uint ?size = heap_ptr +\<^sub>p 1023"
+                  and size: "?size < HEAP_SIZE"
+    unfolding heap_invs_def Let_def by auto
+  hence "ptr_val (node_' s) = ptr_val heap_ptr + 1023 * of_nat (size_of TYPE(mem_node_C))
+                              - ?size * of_nat (size_of TYPE(mem_node_C))"
+    unfolding ptr_add_def apply simp by uint_arith
+  hence "node_' s \<in> set (array_addrs heap_ptr HEAP_SIZE)"
+    apply (simp add: set_array_addrs)
+    apply (rule_tac x="1023 - unat ?size" in exI)
+    apply auto
+    unfolding ptr_add_def
+    apply simp
+    apply (subst ptr_val_inj[symmetric])
+    apply simp 
+    apply (subst of_nat_diff)
+    apply auto
+    using size apply unat_arith
+    done
+  hence "ptr_val heap_ptr < ptr_val (node_' s) + ?size * of_nat (size_of TYPE(mem_node_C))"
+  with bound have "i < 1023" by uint_arit
+  have "?size * 8 < HEAP_SIZE * 8"
+    apply (rule word_mult_less_mono1)
+      apply (rule size)
+      apply simp+
+    done
+  (*from bound and lbound have "word_of_int i < ?size" apply uint_arith*)
+  (*with bound have "i < 1023" by uint_arith
+  have "of_int i < (1023 :: 32 word)"
+    apply (subst of_int_of_nat)
+    using lbound apply simp
+  apply (rule word_of_nat_less)
+  using `n < 1023` apply unat_arith*)
+  with node_size and size have "ptr_val heap_ptr < ptr_val (node_' s +\<^sub>p i)"
+    unfolding ptr_add_def apply simp apply uint_arit
 
 definition
   init_heap_P :: "globals \<Rightarrow> bool"
@@ -96,12 +142,18 @@ proof -
   thus "0 < n" using word_of_nat_less by force
 qed
 
-(*declare [[show_types]]
-declare [[show_consts]]
-declare [[show_sorts]]*)
 
 lemma fail'_wp: "\<lbrace>\<lambda>x. True\<rbrace> fail' \<lbrace>Q\<rbrace>"
 unfolding fail'_def FUNCTION_BODY_NOT_IN_INPUT_C_FILE_def by wp
+
+lemma alloc'_no_fail: "0 < n \<Longrightarrow> no_fail (\<lambda>s. heap_invs s) (alloc' n)"
+apply (rule validNF_no_fail [where Q="\<top>\<top>"])
+unfolding heap_invs_def alloc'_def Let_def
+apply (simp add: h_val_field_from_bytes)
+apply (wp fail'_wp)
+apply simp
+proof safe
+  assume ""
 
 lemma alloc'_invs: "0 < n \<Longrightarrow> \<lbrace>\<lambda>s. heap_invs s\<rbrace> alloc' n \<lbrace>\<lambda>r s. heap_invs s\<rbrace>"
 unfolding alloc'_def heap_invs_def Let_def
@@ -173,7 +225,7 @@ proof -
       hence "unat (?size - (2 + (n >> 3))) * 8 = unat ?size * 8 - unat (2 + (n >> 3)) * 8" by simp }
     moreover
     { have "unat (2 + (n >> 3)) * unat (8 :: 32 word) < 2 ^ len_of TYPE(32)"
-        using n_bound by (simp add: shiftr3_is_div_8, unat_arith)
+        using n_bound by (simp add: shiftr3_is_div_8, unat_arith
       hence "unat ((2 + (n >> 3)) * 8) = unat (2 + (n >> 3)) * unat (8 :: 32 word)"
         by (subst(asm) unat_mult_lem)
       hence "unat (2 + (n >> 3)) * 8 = unat ((2 + (n >> 3)) * 8)" by auto }
