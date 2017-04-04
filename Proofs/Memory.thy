@@ -118,15 +118,6 @@ proof -
   with empty show "snd (hrs_htd (t_hrs_' s) q) = Map.empty" by blast
 qed
 
-lemma size_of_le_n[dest]: "size_of TYPE('a :: wf_type) \<le> unat (n :: ('b :: len) word) \<Longrightarrow> 0 < n"
-proof -
-  fix n :: "'b word"
-  assume "size_of TYPE('a) \<le> unat n"
-  moreover have "0 < size_of TYPE('a)" using sz_nzero by auto
-  ultimately have "0 < unat n" by linarith 
-  thus "0 < n" using word_of_nat_less by force
-qed
-
 lemma fail'_wp: "\<lbrace>\<lambda>x. True\<rbrace> fail' \<lbrace>Q\<rbrace>"
 unfolding fail'_def FUNCTION_BODY_NOT_IN_INPUT_C_FILE_def by wp
 
@@ -210,14 +201,6 @@ proof -
     with empty show "snd (hrs_htd (t_hrs_' s) p) = Map.empty" by blast
   qed
 qed
-
-(*
-apply (simp add: h_val_id not_le word_gt_a_gt_0)
-apply (insert size_of_le_n [where n=n and 'a='a])*)
-
-(*declare [[show_types]]
-declare [[show_consts]]
-declare [[show_sorts]]*)
 
 lemma alloc'_hoare:
 fixes n :: "32 word"
@@ -324,9 +307,21 @@ proof clarify
   qed
 qed
 
-lemma alloc_w32_safe: "\<lbrace>\<lambda>s. (liftC heap_invs) s\<rbrace> exec_concrete lift_global_heap (alloc' 4)
-      \<lbrace>\<lambda>r s. (liftC heap_invs) s \<and> (ptr_val r \<noteq> 0 \<longrightarrow> is_valid_w32 s ((ptr_coerce r) :: (32 word) ptr))\<rbrace>!"
-unfolding liftC_def apply wp
+(*declare [[show_types]]
+declare [[show_consts]]
+declare [[show_sorts]]*)
+
+lemma alloc_w32_safe: "\<lbrace>\<lambda>s. (liftC lift_global_heap heap_invs) s\<rbrace>
+                       exec_concrete lift_global_heap (alloc' 4)
+      \<lbrace>\<lambda>r s. ptr_val r \<noteq> 0 \<longrightarrow> is_valid_w32 s ((ptr_coerce r) :: (32 word) ptr)\<rbrace>!"
+apply (rule validNF)
+apply wp
+apply (rule hoare_post_imp)
+prefer 2
+  apply (rule alloc'_hoare[where 'a="32 word"])
+  apply (auto simp add: align_of_def Let_def)+
+  apply (simp add: lifted_globals_ext_simps(6) simple_lift_def)
+using alloc'_hoare[where n=4 and 'a="32 word"] apply (simp add: Let_def
 unfolding validNF_def valid_def
 apply auto
 proof -
@@ -334,8 +329,7 @@ proof -
   assume "\<forall>g. lift_global_heap s = lift_global_heap g \<longrightarrow> heap_invs g"
      and "\<forall>g. lift_global_heap b = lift_global_heap g \<longrightarrow> heap_invs g"
   hence "heap_invs s" and "heap_invs b" by auto
-oops*)
-
+oops
 
 end
 

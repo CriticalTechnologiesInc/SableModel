@@ -56,4 +56,16 @@ proof auto
     by (metis \<open>0 \<le> i\<close> \<open>0 \<le> k\<close> int_nat_eq mult.commute mult_cancel1)
 qed
 
+lemma hoare_post_imp: "\<forall>r s. Q r s \<longrightarrow> R r s \<Longrightarrow> \<lbrace>P\<rbrace> m \<lbrace>Q\<rbrace> \<Longrightarrow> \<lbrace>P\<rbrace> m \<lbrace>R\<rbrace>"
+unfolding valid_def by blast
+
+lemma size_of_le_n[dest]: "size_of TYPE('a :: wf_type) \<le> unat (n :: ('b :: len) word) \<Longrightarrow> 0 < n"
+proof -
+  fix n :: "'b word"
+  assume "size_of TYPE('a) \<le> unat n"
+  moreover have "0 < size_of TYPE('a)" using sz_nzero by auto
+  ultimately have "0 < unat n" by linarith 
+  thus "0 < n" using word_of_nat_less by force
+qed
+
 end
