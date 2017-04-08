@@ -6,9 +6,11 @@ begin
 
 context sable_isa
 begin
+(* Size may vary by implementation, so these values are adjustable *)
 abbreviation "HEAP_SIZE \<equiv> 1024" (* in mem_nodes *)
-type_synonym HEAP_SIZE_t = 1024
-abbreviation "heap \<equiv> Ptr (symbol_table ''heap'') :: (mem_node_C[HEAP_SIZE_t]) ptr"
+type_synonym HEAP_SIZE = 1024
+
+abbreviation "heap \<equiv> Ptr (symbol_table ''heap'') :: (mem_node_C[HEAP_SIZE]) ptr"
 abbreviation "heap_ptr \<equiv> Ptr (symbol_table ''heap'') :: mem_node_C ptr"
 end
 
@@ -28,10 +30,10 @@ qed
 lemma heap_guard_set_array_addrs: "\<forall>p \<in> set (array_addrs heap_ptr HEAP_SIZE). c_guard p"
 proof (auto simp add: set_array_addrs)
   fix k :: nat
-  assume "k < 1024"
+  assume "k < HEAP_SIZE"
   have "c_guard ((ptr_coerce heap :: mem_node_C ptr) +\<^sub>p int k)"
     apply (rule c_guard_array)
-    using heap_guard and `k < 1024` apply auto
+    using heap_guard and `k < HEAP_SIZE` apply auto
     done
   thus "c_guard (heap_ptr +\<^sub>p int k)" by auto
 qed
@@ -70,15 +72,15 @@ assumes invs: "heap_invs s" and lbound: "0 \<le> i"
 shows "node_' s +\<^sub>p i \<in> set (array_addrs heap_ptr HEAP_SIZE)"
 proof -
   let ?size = "size_C (h_val (hrs_mem (t_hrs_' s)) (node_' s)) :: 32 word"
-  from invs have node_size: "node_' s +\<^sub>p uint ?size = heap_ptr +\<^sub>p 1023"
+  from invs have node_size: "node_' s +\<^sub>p uint ?size = heap_ptr +\<^sub>p (HEAP_SIZE - 1)"
                   and size: "?size < HEAP_SIZE"
     unfolding heap_invs_def Let_def by auto
-  hence "ptr_val (node_' s) = ptr_val heap_ptr + 1023 * of_nat (size_of TYPE(mem_node_C))
+  hence "ptr_val (node_' s) = ptr_val heap_ptr + (HEAP_SIZE - 1) * of_nat (size_of TYPE(mem_node_C))
                               - ?size * of_nat (size_of TYPE(mem_node_C))"
     unfolding ptr_add_def apply simp by uint_arith
   thus "node_' s +\<^sub>p i \<in> set (array_addrs heap_ptr HEAP_SIZE)"
     apply (simp add: set_array_addrs)
-    apply (rule_tac x="1023 + nat i - unat ?size" in exI)
+    apply (rule_tac x="(HEAP_SIZE - 1) + nat i - unat ?size" in exI)
     apply auto
     unfolding ptr_add_def
     apply simp
@@ -86,12 +88,10 @@ proof -
     apply auto
     using size apply unat_arith
     using lbound apply simp
-    proof -
-      from size and bound and lbound have "nat i \<le> nat (uint ?size)"
-        by uint_arith
-      thus "1023 + nat i - unat (?size) < 1024"
-        by (subst(asm) unat_def[symmetric], auto)
-    qed
+    apply (subgoal_tac "nat i \<le> nat (uint ?size)")
+    apply (subst(asm) unat_def[symmetric], auto)
+    using size and bound and lbound apply uint_arith
+    done
 qed
 
 definition
