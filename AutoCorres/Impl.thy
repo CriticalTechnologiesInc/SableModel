@@ -16,7 +16,6 @@ autocorres [
 context sable_isa
 begin
 
-thm test'_def
 thm init_heap'_def
 thm alloc'_def
 thm unseal_passphrase'_def

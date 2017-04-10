@@ -8,34 +8,52 @@ context sable_isa
 begin
 (* Size may vary by implementation, so these values are adjustable *)
 abbreviation "HEAP_SIZE \<equiv> 1024" (* in mem_nodes *)
-type_synonym HEAP_SIZE = 1024
-
-abbreviation "heap \<equiv> Ptr (symbol_table ''heap'') :: (mem_node_C[HEAP_SIZE]) ptr"
+abbreviation "ALIGN_BITS \<equiv> 3"
 abbreviation "heap_ptr \<equiv> Ptr (symbol_table ''heap'') :: mem_node_C ptr"
 end
 
 locale sable_m = sable_isa +
-assumes heap_guard: "c_guard heap"
+assumes heap_non_null: "0 \<notin> {ptr_val heap_ptr..+HEAP_SIZE * size_of TYPE(mem_node_C)}"
+    and heap_aligned: "is_aligned (ptr_val heap_ptr) ALIGN_BITS"
 begin
 
-lemma heap_ptr_guard: "c_guard heap_ptr"
-proof -
-  have "c_guard (((ptr_coerce heap) :: mem_node_C ptr) +\<^sub>p 0)"
-    apply (rule c_guard_array)
-    using heap_guard apply auto
-    done
-  thus ?thesis by simp
-qed
+definition
+  mem_node_C_guard :: "mem_node_C ptr \<Rightarrow> bool"
+where
+  "mem_node_C_guard n \<equiv> c_null_guard n \<and> is_aligned (ptr_val n) ALIGN_BITS"
 
-lemma heap_guard_set_array_addrs: "\<forall>p \<in> set (array_addrs heap_ptr HEAP_SIZE). c_guard p"
-proof (auto simp add: set_array_addrs)
+lemma[dest, intro]: "mem_node_C_guard p \<Longrightarrow> c_guard p"
+unfolding mem_node_C_guard_def c_guard_def ptr_aligned_def is_aligned_def
+by (auto simp add: align_of_def, unat_arith)
+
+lemma heap_ptr_guard: "mem_node_C_guard heap_ptr"
+unfolding mem_node_C_guard_def c_null_guard_def using heap_non_null and heap_aligned
+unfolding intvl_def is_aligned_def by auto
+
+lemma contrapos: "(P \<longrightarrow> Q) = (\<not>Q \<longrightarrow> \<not>P)"
+by blast
+
+lemma heap_guard_set_array_addrs:
+  "\<forall>p \<in> set (array_addrs heap_ptr HEAP_SIZE). mem_node_C_guard p"
+apply (simp add: set_array_addrs mem_node_C_guard_def)
+proof clarify
   fix k :: nat
   assume "k < HEAP_SIZE"
-  have "c_guard ((ptr_coerce heap :: mem_node_C ptr) +\<^sub>p int k)"
-    apply (rule c_guard_array)
-    using heap_guard and `k < HEAP_SIZE` apply auto
-    done
-  thus "c_guard (heap_ptr +\<^sub>p int k)" by auto
+  show "c_null_guard (heap_ptr +\<^sub>p int k) \<and> is_aligned (ptr_val (heap_ptr +\<^sub>p int k)) ALIGN_BITS"
+  proof
+    have "{ptr_val (heap_ptr +\<^sub>p int k)..+size_of TYPE(mem_node_C)}
+          \<subseteq> {ptr_val heap_ptr..+HEAP_SIZE * size_of TYPE(mem_node_C)}" (is "?P \<subseteq> ?H")
+      using `k < HEAP_SIZE` apply (auto simp add: ptr_add_def intvl_def)
+      apply (rule_tac x="k * 8 + ka" in exI, auto)
+      done
+    with heap_non_null show "c_null_guard (heap_ptr +\<^sub>p int k)"
+      unfolding c_null_guard_def by blast
+  next
+    from heap_aligned have "is_aligned (symbol_table ''heap'' + of_nat k * (2 ^ ALIGN_BITS)) ALIGN_BITS"
+      by (fastforce intro: Aligned.is_aligned_add_multI)
+    thus "is_aligned (ptr_val (heap_ptr +\<^sub>p int k)) ALIGN_BITS"
+      by (simp add: ptr_add_def)
+  qed
 qed
 
 definition
@@ -63,7 +81,7 @@ where
     (let node_size = mem_node_C.size_C (h_val (hrs_mem (t_hrs_' s)) (node_' s)) in
     node_size < HEAP_SIZE \<and> node_' s +\<^sub>p uint (node_size) = heap_ptr +\<^sub>p (HEAP_SIZE - 1) \<and>
     (\<forall>p \<in> {ptr_val (node_' s +\<^sub>p 1)..+unat node_size * size_of TYPE(mem_node_C)}.
-      snd (hrs_htd (t_hrs_' s) p) = Map.empty))"
+      snd (hrs_htd (t_hrs_' s) p) = Map.empty)) \<and> is_aligned (ptr_val (node_' s)) ALIGN_BITS"
 
 lemma heap_invs_node:
 fixes s :: globals and i :: int
@@ -106,9 +124,14 @@ lemma init_heap'_invs:
 unfolding init_heap'_def heap_invs_def fail'_def
   FUNCTION_BODY_NOT_IN_INPUT_C_FILE_def init_heap_P_def
 apply wp
-using heap_guard apply (auto simp add: ptr_add_def ptr_sub_def h_val_id intvl_self)
+apply (auto simp add: ptr_add_def ptr_sub_def h_val_id intvl_self)
 defer
-using heap_ptr_guard apply simp
+using heap_ptr_guard apply (simp add: mem_node_C_guard_def)
+using heap_ptr_guard apply blast
+using heap_non_null and heap_aligned unfolding c_guard_def ptr_aligned_def c_null_guard_def
+  is_aligned_def apply (simp add: align_of_array)
+  using align_size_of[where 'a=mem_node_C] apply simp
+  using dvd.dual_order.trans apply blast
 proof -
   fix s :: globals and q :: "32 word"
   assume empty: "\<forall>p \<in> {symbol_table ''heap''..+8192}. snd (hrs_htd (t_hrs_' s) p) = Map.empty"
@@ -130,25 +153,25 @@ apply (simp add: not_le)
 proof -
   fix s :: globals
   let ?size = "size_C (h_val (hrs_mem (t_hrs_' s)) (node_' s)) :: 32 word"
-  let ?blocks = "(n >> 3) + 1 :: 32 word"
+  let ?blocks = "(n >> ALIGN_BITS) + 1 :: 32 word"
   assume "0 < n" and invs: "heap_invs s"
   from invs have node: "\<And>i. 0 \<le> i \<Longrightarrow> i \<le> uint ?size
         \<Longrightarrow> node_' s +\<^sub>p i \<in> set (array_addrs heap_ptr HEAP_SIZE)"
     using heap_invs_node by auto
   show "(?size \<le> ?blocks \<longrightarrow> c_guard (node_' s)) \<and>
-         (?blocks < ?size \<longrightarrow> c_guard (node_' s +\<^sub>p uint (2 + (n >> 3))) \<and> c_guard (node_' s))"
+         (?blocks < ?size \<longrightarrow> c_guard (node_' s +\<^sub>p uint (2 + (n >> ALIGN_BITS))) \<and> c_guard (node_' s))"
   proof safe
     show "c_guard (node_' s)" using node[of 0] and heap_guard_set_array_addrs
-      unfolding ptr_add_def by simp
+      unfolding ptr_add_def by auto
   next
     assume "?blocks < ?size"
     hence "uint (?blocks + 1) \<le> uint ?size" by uint_arith
     with node[of "uint (?blocks + 1)"] and heap_guard_set_array_addrs
-      show "c_guard (node_' s +\<^sub>p uint (2 + (n >> 3)))" 
+      show "c_guard (node_' s +\<^sub>p uint (2 + (n >> ALIGN_BITS)))" 
         unfolding ptr_add_def by auto
   next
     show "c_guard (node_' s)" using node[of 0] and heap_guard_set_array_addrs
-      unfolding ptr_add_def by simp
+      unfolding ptr_add_def by auto
   qed
 qed
 
@@ -161,50 +184,59 @@ apply (clarsimp simp add: heap_guard_set_array_addrs)
 proof -
   fix s :: globals
   let ?size = "size_C (h_val (hrs_mem (t_hrs_' s)) (node_' s)) :: 32 word"
-  let ?blocks = "(n >> 3) + 1 :: 32 word"
+  let ?blocks = "(n >> ALIGN_BITS) + 1 :: 32 word"
   assume node_size: "node_' s +\<^sub>p uint ?size = heap_ptr +\<^sub>p 1023"
      and size: "size_C (h_val (hrs_mem (t_hrs_' s)) (node_' s)) < HEAP_SIZE"
-     and blocks_size: "(n >> 3) + 1 < ?size"
+     and blocks_size: "(n >> ALIGN_BITS) + 1 < ?size"
      and n: "0 < n"
      and empty: "\<forall>p \<in> {ptr_val (node_' s +\<^sub>p 1)..+unat ?size * 8}. snd (hrs_htd (t_hrs_' s) p) = Map.empty"
+     and aligned: "is_aligned (ptr_val (node_' s)) ALIGN_BITS"
   from blocks_size have blocksp1_size: "?blocks + 1 \<le> ?size" by unat_arith
   from blocks_size and size have n_bound: "n < HEAP_SIZE * 8"
     by (simp add: shiftr3_is_div_8, unat_arith)
-  show "?size - (2 + (n >> 3)) < HEAP_SIZE \<and>
-        node_' s +\<^sub>p uint (2 + (n >> 3)) +\<^sub>p uint (?size - (2 + (n >> 3))) = heap_ptr +\<^sub>p 1023 \<and>
-        (\<forall>p \<in> {ptr_val (node_' s +\<^sub>p uint (2 + (n >> 3)) +\<^sub>p 1)..+unat (?size - (2 + (n >> 3))) * 8}.
-             snd (hrs_htd (t_hrs_' s) p) = Map.empty)"
+  show "?size - (2 + (n >> ALIGN_BITS)) < HEAP_SIZE \<and>
+        node_' s +\<^sub>p uint (2 + (n >> ALIGN_BITS)) +\<^sub>p uint (?size - (2 + (n >> ALIGN_BITS))) = heap_ptr +\<^sub>p 1023 \<and>
+        (\<forall>p \<in> {ptr_val (node_' s +\<^sub>p uint (2 + (n >> ALIGN_BITS)) +\<^sub>p 1)..+unat (?size - (2 + (n >> ALIGN_BITS))) * 8}.
+             snd (hrs_htd (t_hrs_' s) p) = Map.empty) \<and>
+             is_aligned (ptr_val (node_' s +\<^sub>p uint (2 + (n >> ALIGN_BITS)))) ALIGN_BITS"
   proof safe
-    show "node_' s +\<^sub>p uint (2 + (n >> 3)) +\<^sub>p uint (?size - (2 + (n >> 3))) = heap_ptr +\<^sub>p 1023"
+    show "node_' s +\<^sub>p uint (2 + (n >> ALIGN_BITS)) +\<^sub>p uint (?size - (2 + (n >> ALIGN_BITS))) = heap_ptr +\<^sub>p 1023"
       using node_size unfolding ptr_add_def by unat_arith
   next
-    show "?size - (2 + (n >> 3)) < 0x400" using blocksp1_size and size
+    show "?size - (2 + (n >> ALIGN_BITS)) < 0x400" using blocksp1_size and size
       by (auto, unat_arith)
   next
     fix p :: "32 word"
-    assume p: "p \<in> {ptr_val (node_' s +\<^sub>p uint (2 + (n >> 3)) +\<^sub>p 1)..+unat (?size - (2 + (n >> 3))) * 8}"
+    assume p: "p \<in> {ptr_val (node_' s +\<^sub>p uint (2 + (n >> ALIGN_BITS)) +\<^sub>p 1)..+unat (?size - (2 + (n >> ALIGN_BITS))) * 8}"
     moreover
-    { have "unat (?size - (2 + (n >> 3))) = unat ?size - unat (2 + (n >> 3))"
+    { have "unat (?size - (2 + (n >> ALIGN_BITS))) = unat ?size - unat (2 + (n >> ALIGN_BITS))"
         using size and blocks_size by unat_arith
-      hence "unat (?size - (2 + (n >> 3))) * 8 = unat ?size * 8 - unat (2 + (n >> 3)) * 8" by simp }
+      hence "unat (?size - (2 + (n >> ALIGN_BITS))) * 8 = unat ?size * 8 - unat (2 + (n >> ALIGN_BITS)) * 8" by simp }
     moreover
-    { have "unat (2 + (n >> 3)) * unat (8 :: 32 word) < 2 ^ len_of TYPE(32)"
+    { have "unat (2 + (n >> ALIGN_BITS)) * unat (8 :: 32 word) < 2 ^ len_of TYPE(32)"
         using n_bound by (simp add: shiftr3_is_div_8, unat_arith)
-      hence "unat ((2 + (n >> 3)) * 8) = unat (2 + (n >> 3)) * unat (8 :: 32 word)"
+      hence "unat ((2 + (n >> ALIGN_BITS)) * 8) = unat (2 + (n >> ALIGN_BITS)) * unat (8 :: 32 word)"
         by (subst(asm) unat_mult_lem)
-      hence "unat (2 + (n >> 3)) * 8 = unat ((2 + (n >> 3)) * 8)" by auto }
-    ultimately have "p \<in> {ptr_val (node_' s +\<^sub>p 1) + ((2 + (n >> 3)) * 8)..+
-                            unat ?size * 8 - unat ((2 + (n >> 3)) * 8)}"
+      hence "unat (2 + (n >> ALIGN_BITS)) * 8 = unat ((2 + (n >> ALIGN_BITS)) * 8)" by auto }
+    ultimately have "p \<in> {ptr_val (node_' s +\<^sub>p 1) + ((2 + (n >> ALIGN_BITS)) * 8)..+
+                            unat ?size * 8 - unat ((2 + (n >> ALIGN_BITS)) * 8)}"
       unfolding ptr_add_def by simp
     hence "p \<in> {ptr_val (node_' s +\<^sub>p 1)..+unat ?size * 8}"
-      by (drule_tac y="(2 + (n >> 3)) * 8" in intvl_plus_sub_offset)
+      by (drule_tac y="(2 + (n >> ALIGN_BITS)) * 8" in intvl_plus_sub_offset)
     with empty show "snd (hrs_htd (t_hrs_' s) p) = Map.empty" by blast
+  next
+    from aligned have "is_aligned (ptr_val (node_' s) + 2 * 2 ^ ALIGN_BITS) ALIGN_BITS"
+      by (fastforce intro: Aligned.is_aligned_add_multI)
+    hence "is_aligned ((ptr_val (node_' s) + 0x10) + (n >> 3) * 2 ^ ALIGN_BITS) ALIGN_BITS"
+      by (fastforce intro: Aligned.is_aligned_add_multI)
+    thus "is_aligned (ptr_val (node_' s +\<^sub>p uint (2 + (n >> ALIGN_BITS)))) ALIGN_BITS"
+      by (simp add: ptr_add_def is_num_normalize(1))
   qed
 qed
 
 lemma alloc'_hoare:
 fixes n :: "32 word"
-assumes align: "align_of TYPE('a) dvd align_of TYPE(mem_node_C)"
+assumes align: "align_of TYPE('a) dvd (2 ^ ALIGN_BITS)"
     and n: "size_of TYPE('a) \<le> unat n" and "0 < n"
 shows "\<lbrace>\<lambda>s. heap_invs s\<rbrace> alloc' n
        \<lbrace>\<lambda>r s. let ptr = (ptr_coerce r) :: ('a :: mem_type) ptr in
@@ -226,6 +258,7 @@ proof clarify
                             snd (hrs_htd (t_hrs_' s) p) = Map.empty"
              and node_size: "node_' s +\<^sub>p uint ?size = heap_ptr +\<^sub>p 1023"
              and size: "?size < HEAP_SIZE"
+             and aligned: "is_aligned (ptr_val (node_' s)) ALIGN_BITS"
     unfolding heap_invs_def Let_def by auto
   from blocks_size have blocksp1_size: "?blocks + 1 \<le> ?size" by unat_arith
   from blocks_size and size have blocks_bound: "?blocks < HEAP_SIZE - 1" by unat_arith
@@ -274,14 +307,14 @@ proof clarify
         using intvlI by (simp, blast)
     qed
   next
-    from `c_guard (node_' s)` have "ptr_aligned (node_' s +\<^sub>p 1)"
-      unfolding c_guard_def by (simp add: CTypes.ptr_aligned_plus)
-    moreover have "ptr_val (ptr_coerce (node_' s +\<^sub>p 1) :: 'a ptr) = ptr_val (node_' s +\<^sub>p 1)"
-      by auto
-    ultimately show "ptr_aligned (ptr_coerce (node_' s +\<^sub>p 1) :: 'a ptr)"
-      unfolding ptr_aligned_def using align dvd_trans by auto
+    from aligned have "is_aligned (ptr_val (node_' s) + 1 * 2 ^ ALIGN_BITS) ALIGN_BITS"
+      by (fastforce intro!: is_aligned_add_multI)
+    hence "is_aligned (ptr_val (ptr_coerce (node_' s +\<^sub>p 1) :: 'a ptr)) ALIGN_BITS"
+      by (simp add: ptr_add_def)
+    with align show "ptr_aligned (ptr_coerce (node_' s +\<^sub>p 1) :: 'a ptr)"
+      unfolding is_aligned_def ptr_aligned_def using dvd_trans by blast
   next
-    from heap_guard have "0 \<notin> {ptr_val heap_ptr..+(HEAP_SIZE * size_of TYPE(mem_node_C))}"
+    from heap_non_null have "0 \<notin> {ptr_val heap_ptr..+(HEAP_SIZE * size_of TYPE(mem_node_C))}"
       (is "_ \<notin> ?heap") unfolding c_guard_def c_null_guard_def by auto
     moreover have "{ptr_val (node_' s +\<^sub>p 1)..+size_of TYPE('a)} \<subseteq> ?heap" (is "?val \<subseteq> _")
     proof
@@ -302,7 +335,7 @@ proof clarify
       apply unat_arith
       done
     qed
-    with heap_guard show "c_null_guard (ptr_coerce (node_' s +\<^sub>p 1) :: 'a ptr)"
+    with heap_non_null show "c_null_guard (ptr_coerce (node_' s +\<^sub>p 1) :: 'a ptr)"
       unfolding c_guard_def c_null_guard_def by auto
   qed
 qed
