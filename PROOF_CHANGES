@@ -23,3 +23,8 @@ essential to the proofs, but it may help with reasoning about alignment
 with size 0 at the very end of the heap.
 - Reordered node assignment, with the "important" node assignment happening
 second. This made it feasible to use the h_val_id rule.
+
+Heap with a loop:
+- Removed the "break" statements from the loop interior, and instead added
+a breaking condition to the for-loop terminator. This allowed AutoCorres
+to abstract away (or not create) an exception monad.
