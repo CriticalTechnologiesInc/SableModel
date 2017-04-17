@@ -6,16 +6,8 @@ begin
 
 context sable_isa
 begin
-(* Size may vary by implementation, so these values are adjustable *)
-abbreviation "HEAP_SIZE \<equiv> 1024" (* in mem_nodes *)
-abbreviation "ALIGN_BITS \<equiv> 3"
-abbreviation "heap_ptr \<equiv> Ptr (symbol_table ''heap'') :: mem_node_C ptr"
-end
 
-locale sable_m = sable_isa +
-assumes heap_non_null: "0 \<notin> {ptr_val heap_ptr..+HEAP_SIZE * size_of TYPE(mem_node_C)}"
-    and heap_aligned: "is_aligned (ptr_val heap_ptr) ALIGN_BITS"
-begin
+abbreviation "ALIGN_BITS \<equiv> 3"
 
 definition
   mem_node_C_guard :: "mem_node_C ptr \<Rightarrow> bool"
@@ -26,14 +18,10 @@ lemma[dest, intro]: "mem_node_C_guard p \<Longrightarrow> c_guard p"
 unfolding mem_node_C_guard_def c_guard_def ptr_aligned_def is_aligned_def
 by (auto simp add: align_of_def, unat_arith)
 
-lemma heap_ptr_guard: "mem_node_C_guard heap_ptr"
-unfolding mem_node_C_guard_def c_null_guard_def using heap_non_null and heap_aligned
-unfolding intvl_def is_aligned_def by auto
-
 lemma contrapos: "(P \<longrightarrow> Q) = (\<not>Q \<longrightarrow> \<not>P)"
 by blast
 
-lemma heap_guard_set_array_addrs:
+(*lemma heap_guard_set_array_addrs:
   "\<forall>p \<in> set (array_addrs heap_ptr HEAP_SIZE). mem_node_C_guard p"
 apply (simp add: set_array_addrs mem_node_C_guard_def)
 proof clarify
@@ -54,7 +42,7 @@ proof clarify
     thus "is_aligned (ptr_val (heap_ptr +\<^sub>p int k)) ALIGN_BITS"
       by (simp add: ptr_add_def)
   qed
-qed
+qed*)
 
 definition
   liftC :: "('c \<Rightarrow> 'a) \<Rightarrow> ('c \<Rightarrow> bool) \<Rightarrow> ('a \<Rightarrow> bool)"
@@ -74,6 +62,9 @@ lemma hoare_liftC[intro]:
    \<lbrace>liftC st P\<rbrace> exec_concrete st m \<lbrace>\<lambda>r s. liftC st (Q r) s\<rbrace>"
 by wp
 
+lemma fail'_wp: "\<lbrace>\<lambda>x. True\<rbrace> fail' \<lbrace>Q\<rbrace>"
+unfolding fail'_def FUNCTION_BODY_NOT_IN_INPUT_C_FILE_def by wp
+
 definition
   heap_invs :: "globals \<Rightarrow> bool"
 where
@@ -83,7 +74,7 @@ where
     (\<forall>p \<in> {ptr_val (node_' s +\<^sub>p 1)..+unat node_size * size_of TYPE(mem_node_C)}.
       snd (hrs_htd (t_hrs_' s) p) = Map.empty)) \<and> is_aligned (ptr_val (node_' s)) ALIGN_BITS"
 
-lemma heap_invs_node:
+(*lemma heap_invs_node:
 fixes s :: globals and i :: int
 assumes invs: "heap_invs s" and lbound: "0 \<le> i"
     and bound: "i \<le> uint (size_C (h_val (hrs_mem (t_hrs_' s)) (node_' s)) :: 32 word)"
@@ -113,11 +104,10 @@ proof -
 qed
 
 definition
-  init_heap_P :: "globals \<Rightarrow> bool"
+  init_heap_P :: "unit ptr \<Rightarrow> 32 word \<Rightarrow> globals \<Rightarrow> bool"
 where
-  "init_heap_P s \<equiv> node_' s = NULL \<and>
-    (\<forall>p \<in> {ptr_val heap_ptr..+HEAP_SIZE * size_of TYPE(mem_node_C)}.
-     snd (hrs_htd (t_hrs_' s) p) = Map.empty)"
+  "init_heap_P p n s \<equiv> 0 \<notin> {ptr_val p..+unat n} \<and> is_aligned (ptr_val p) ALIGN_BITS \<and>
+    (\<forall>node \<in> {ptr_val p..+unat n}. snd (hrs_htd (t_hrs_' s) node) = Map.empty)"
 
 lemma init_heap'_invs:
   "\<lbrace>\<lambda>s. (init_heap_P s)\<rbrace> init_heap' \<lbrace>\<lambda>_ s. (heap_invs s)\<rbrace>!"
@@ -141,8 +131,6 @@ proof -
   with empty show "snd (hrs_htd (t_hrs_' s) q) = Map.empty" by blast
 qed
 
-lemma fail'_wp: "\<lbrace>\<lambda>x. True\<rbrace> fail' \<lbrace>Q\<rbrace>"
-unfolding fail'_def FUNCTION_BODY_NOT_IN_INPUT_C_FILE_def by wp
 
 lemma alloc'_no_fail: "0 < n \<Longrightarrow> no_fail (\<lambda>s. heap_invs s) (alloc' n)"
 apply (rule validNF_no_fail [where Q="\<top>\<top>"])
@@ -232,17 +220,18 @@ proof -
     thus "is_aligned (ptr_val (node_' s +\<^sub>p uint (2 + (n >> ALIGN_BITS)))) ALIGN_BITS"
       by (simp add: ptr_add_def is_num_normalize(1))
   qed
-qed
+qed*)
 
 lemma alloc'_hoare:
 fixes n :: "32 word"
 assumes align: "align_of TYPE('a) dvd (2 ^ ALIGN_BITS)"
     and n: "size_of TYPE('a) \<le> unat n" and "0 < n"
-shows "\<lbrace>\<lambda>s. heap_invs s\<rbrace> alloc' n
+shows "\<lbrace>\<lambda>s. True\<rbrace> alloc' h n
        \<lbrace>\<lambda>r s. let ptr = (ptr_coerce r) :: ('a :: mem_type) ptr in
         ptr_val r \<noteq> 0 \<longrightarrow> heap_ptr_valid (ptr_retyp ptr (hrs_htd (t_hrs_' s))) ptr\<rbrace>"
 unfolding alloc'_def Let_def
 apply (simp add: h_val_field_from_bytes)
+apply (subst whileLoop_add_inv [where I="\<top>\<top>" and M="\<lambda>x. 0"])
 apply (wp fail'_wp)
 apply (simp add: `0 < n` h_val_id not_le)
 proof clarify

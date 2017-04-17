@@ -28,3 +28,5 @@ Heap with a loop:
 - Removed the "break" statements from the loop interior, and instead added
 a breaking condition to the for-loop terminator. This allowed AutoCorres
 to abstract away (or not create) an exception monad.
+- Further simplified the loop by removing the body entirely, using the loop
+only to identify the next free node.
