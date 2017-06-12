@@ -221,7 +221,8 @@ proof -
       by (simp add: ptr_add_def is_num_normalize(1))
   qed
 qed*)
-
+print_record globals
+print_record abs_globals
 lemma alloc'_hoare:
 fixes n :: "32 word"
 assumes align: "align_of TYPE('a) dvd (2 ^ ALIGN_BITS)"
@@ -234,6 +235,8 @@ apply (simp add: h_val_field_from_bytes)
 apply (subst whileLoop_add_inv [where I="\<top>\<top>" and M="\<lambda>x. 0"])
 apply (wp fail'_wp)
 apply (simp add: `0 < n` h_val_id not_le)
+defer
+apply wp
 proof clarify
   fix s :: globals
   let ?ptrc = "ptr_coerce (node_' s +\<^sub>p 1) :: 'a ptr"
