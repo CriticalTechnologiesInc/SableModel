@@ -31,14 +31,14 @@ where
     | Inr value \<Rightarrow> tdEXCEPTION_C.error_C (TPM_NONCE_exception_C.exception_C a') = NONE
         \<and> NONCE_rel value (TPM_NONCE_exception_C.value_C a')"
 
-definition
+(*definition
   R_PCRVALUE_rel :: "(ERROR + TPM.DIGEST) \<Rightarrow> TPM_PCRVALUE_exception_C \<Rightarrow> bool"
 where
   "R_PCRVALUE_rel a a' \<equiv>
     case a of
       Inl error \<Rightarrow> ERROR_rel error (tdEXCEPTION_C.error_C (TPM_PCRVALUE_exception_C.exception_C a'))
     | Inr value \<Rightarrow> tdEXCEPTION_C.error_C (TPM_PCRVALUE_exception_C.exception_C a') = NONE
-        \<and> DIGEST_rel value (TPM_PCRVALUE_exception_C.value_C a')"
+        \<and> DIGEST_rel value (TPM_PCRVALUE_exception_C.value_C a')"*)
 
 definition
   HEAP_DATA_rel :: "('a :: Hashable) value_rel \<Rightarrow> 'a \<Rightarrow> tdHEAP_DATA_C \<times> lifted_globals \<Rightarrow> bool"

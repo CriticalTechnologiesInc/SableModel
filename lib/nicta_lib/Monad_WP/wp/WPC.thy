@@ -9,7 +9,7 @@
  *)
 
 theory WPC
-imports "~~/src/HOL/Main"
+imports "WP_Pre"
 keywords "wpc_setup" :: thy_decl
 
 begin
@@ -154,8 +154,14 @@ in
   tactic2 arg pred fin thm
 end;
 
+(* give each rule in the list one possible resolution outcome *)
+fun resolve_each_once_tac ctxt thms i
+    = fold (curry (op APPEND'))
+        (map (DETERM oo resolve_tac ctxt o single) thms)
+        (K no_tac) i
+
 fun resolve_single_tac ctxt rules n thm =
-  case Seq.chop 2 (resolve_tac ctxt rules n thm)
+  case Seq.chop 2 (resolve_each_once_tac ctxt rules n thm)
   of ([], _) => raise WPCFailed
                         ("resolve_single_tac: no rules could apply",
                          [], thm :: rules)
@@ -192,8 +198,10 @@ fun wp_cases_tac processors ctxt thm =
       |> Seq.list_of |> Seq.of_list
     handle WPCFailed _ => no_tac thm;
 
-fun wp_debug_tac processors ctxt  =
-  detect_terms ctxt (split_term processors ctxt);
+fun wp_debug_tac processors ctxt thm =
+  detect_terms ctxt (split_term processors ctxt) thm
+      |> Seq.list_of |> Seq.of_list
+    handle WPCFailed e => (warning (@{make_string} (WPCFailed e)); no_tac thm);
 
 fun wp_cases_method processors = Scan.succeed (fn ctxt =>
   Method.SIMPLE_METHOD (wp_cases_tac processors ctxt));
@@ -228,11 +236,14 @@ val wp_cases_method_vweak  = WeakestPreCases.wp_cases_method @{thms wpc_vweak_pr
 
 *}
 
-method_setup wpc = {* wp_cases_method_strong *}
+method_setup wpc0 = {* wp_cases_method_strong *}
   "case splitter for weakest-precondition proofs"
 
-method_setup wpcw = {* wp_cases_method_weak *}
+method_setup wpcw0 = {* wp_cases_method_weak *}
   "weak-form case splitter for weakest-precondition proofs"
+
+method wpc = (wp_pre, wpc0)
+method wpcw = (wp_pre, wpcw0)
 
 definition
   wpc_test :: "'a set \<Rightarrow> ('a \<times> 'b) set \<Rightarrow> 'b set \<Rightarrow> bool"

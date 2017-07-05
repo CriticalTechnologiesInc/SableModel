@@ -142,63 +142,72 @@ fun get_combined_rules rules' combs' =
 fun add_rule rule rs =
     {trips = #trips rs,
       rules = add_rule_inner (snd (#trips rs)) rule (#rules rs),
-      splits = #splits rs, combs = #combs rs,
-      unsafe_rules = #unsafe_rules rs};
+      splits = #splits rs,
+      combs = #combs rs,
+      unsafe_rules = #unsafe_rules rs
+    }
 
 fun del_rule rule rs =
     {trips = #trips rs,
       rules = del_rule_inner (snd (#trips rs)) rule (#rules rs),
-      splits = #splits rs, combs = #combs rs,
-      unsafe_rules = #unsafe_rules rs};
+      splits = #splits rs,
+      combs = #combs rs,
+      unsafe_rules = #unsafe_rules rs
+    }
 
 fun add_trip rule (rs : wp_rules) = let
     val trips = Thm.add_thm rule (fst (#trips rs));
     val trip_conv = mk_trip_conv trips
   in {trips = (trips, trip_conv),
       rules = mk_rules trip_conv (dest_rules (#rules rs)),
-      splits = #splits rs, combs = #combs rs,
-      unsafe_rules = #unsafe_rules rs} end;
+      splits = #splits rs,
+      combs = #combs rs,
+      unsafe_rules = #unsafe_rules rs}
+  end
 
 fun del_trip rule (rs : wp_rules) = let
     val trips = Thm.del_thm rule (fst (#trips rs));
     val trip_conv = mk_trip_conv trips
   in {trips = (trips, trip_conv),
       rules = mk_rules trip_conv (dest_rules (#rules rs)),
-      splits = #splits rs, combs = #combs rs,
-      unsafe_rules = #unsafe_rules rs} end;
+      splits = #splits rs,
+      combs = #combs rs,
+      unsafe_rules = #unsafe_rules rs}
+  end
 
 fun add_split rule (rs : wp_rules) =
-    {trips = #trips rs, rules = #rules rs,
-      splits = Thm.add_thm rule (#splits rs), combs = #combs rs,
-      unsafe_rules = #unsafe_rules rs};
+    {trips = #trips rs,
+      rules = #rules rs,
+      splits = Thm.add_thm rule (#splits rs),
+      combs = #combs rs,
+      unsafe_rules = #unsafe_rules rs}
 
 fun add_comb rule (rs : wp_rules) =
     {trips = #trips rs, rules = #rules rs,
       splits = #splits rs, combs = Thm.add_thm rule (#combs rs),
-      unsafe_rules = #unsafe_rules rs};
+      unsafe_rules = #unsafe_rules rs}
 
 fun del_split rule rs =
     {trips = #trips rs, rules = #rules rs,
       splits = Thm.del_thm rule (#splits rs), combs = #combs rs,
-      unsafe_rules = #unsafe_rules rs};
+      unsafe_rules = #unsafe_rules rs}
 
 fun del_comb rule rs =
     {trips = #trips rs, rules = #rules rs,
       splits = #splits rs, combs = Thm.del_thm rule (#combs rs),
-      unsafe_rules = #unsafe_rules rs};
+      unsafe_rules = #unsafe_rules rs}
 
 fun add_unsafe_rule rule rs =
     {trips = #trips rs, rules = #rules rs,
       splits = #splits rs, combs = #combs rs,
-      unsafe_rules = Thm.add_thm rule (#unsafe_rules rs)};
+      unsafe_rules = Thm.add_thm rule (#unsafe_rules rs)}
 
 fun del_unsafe_rule rule rs =
     {trips = #trips rs, rules = #rules rs,
       splits = #splits rs, combs = #combs rs,
-      unsafe_rules = Thm.del_thm rule (#unsafe_rules rs)};
+      unsafe_rules = Thm.del_thm rule (#unsafe_rules rs)}
 
-fun gen_att m = Thm.declaration_attribute (fn thm => fn context =>
-    WPData.map (m thm) context);
+fun gen_att m = Thm.declaration_attribute (fn thm => fn context => WPData.map (m thm) context);
 
 val wp_add = gen_att add_rule;
 val wp_del = gen_att del_rule;
@@ -236,7 +245,7 @@ fun append_used_rule rule used_rules = used_rules := !used_rules @ [rule]
 
 fun add_extra_rule rule extra_rules = extra_rules := !extra_rules @ [rule]
 
-fun resolve_ruleset_tac ctxt rs used_rules_ref n t =
+fun resolve_ruleset_tac' ctxt rs used_rules_ref n t =
   let fun append_rule rule thm = Seq.map (fn thm => (append_used_rule rule used_rules_ref; thm)) thm;
   in case
     Thm.cprem_of t n |> Thm.term_of |> snd (#trips rs) (Thm.theory_of_thm t)
@@ -255,6 +264,9 @@ fun resolve_ruleset_tac ctxt rs used_rules_ref n t =
          FIRST (map (fn split => fn thm => append_rule split (resolve_tac ctxt [split] n thm)) (#splits rs)) end t
     | _ => FIRST (map (fn rule => fn thm => append_rule rule (resolve_tac ctxt [rule] n thm))
                       (map snd (#3 (#rules rs)) @ #splits rs)) t end;
+
+fun resolve_ruleset_tac ctxt rs used_rules_ref n =
+  (Apply_Debug.break ctxt (SOME "wp")) THEN (resolve_ruleset_tac' ctxt rs used_rules_ref n)
 
 fun pretty_rule ctxt rule =
   Pretty.big_list (Thm.get_name_hint rule) [Thm.pretty_thm ctxt rule]
@@ -294,20 +306,31 @@ fun apply_rules_tac_n trace ctxt extras extras_ref n =
 let
   val rules = get_rules ctxt extras;
   val used_rules = Unsynchronized.ref [] : thm list Unsynchronized.ref
+  val wp_pre_tac = Method.NO_CONTEXT_TACTIC ctxt
+                      (Method_Closure.apply_method ctxt @{method wp_pre} [] [] [] ctxt [])
+  val cleanup_tac = TRY (REPEAT
+                      (resolve_tac ctxt [@{thm TrueI}, @{thm conj_TrueI}, @{thm conj_TrueI2}] 1
+                       ORELSE assume_tac ctxt 1))
+  val steps_tac = (CHANGED (REPEAT_DETERM (resolve_ruleset_tac ctxt rules used_rules 1)))
+                  THEN cleanup_tac
 in
+  SELECT_GOAL (
   (fn t => Seq.map (fn thm => (warn_unused_thms ctxt extras extras_ref used_rules;
                                trace_used_thms trace used_rules ctxt; thm))
-    (CHANGED (REPEAT_DETERM (resolve_ruleset_tac ctxt rules used_rules n)) t)) THEN_ELSE
-  (fn t => (warn_unsafe_thms (#unsafe_rules rules) n ctxt t; all_tac t),
-  fn t => (warn_unsafe_thms (#unsafe_rules rules) n ctxt t; no_tac t))
-end;
+    ((wp_pre_tac THEN steps_tac) t)) THEN_ELSE
+  (fn t => (warn_unsafe_thms (#unsafe_rules rules) 1 ctxt t; all_tac t),
+  fn t => (warn_unsafe_thms (#unsafe_rules rules) 1 ctxt t; no_tac t))) n
+end
 
-fun apply_rules_tac trace ctxt extras extras_ref = apply_rules_tac_n trace ctxt extras extras_ref 1;
+fun apply_rules_tac trace ctxt extras extras_ref =
+  apply_rules_tac_n trace ctxt extras extras_ref 1;
+
 fun apply_once_tac trace ctxt extras extras_ref t =
-  let val used_rules = Unsynchronized.ref [] : thm list Unsynchronized.ref;
+  let
+    val used_rules = Unsynchronized.ref [] : thm list Unsynchronized.ref;
   in Seq.map (fn thm => (warn_unused_thms ctxt extras extras_ref used_rules;
                          trace_used_thms trace used_rules ctxt; thm))
-    (resolve_ruleset_tac ctxt (get_rules ctxt extras) used_rules 1 t) end
+    (SELECT_GOAL (resolve_ruleset_tac ctxt (get_rules ctxt extras) used_rules 1) 1 t) end
 
 fun clear_rules ({combs, rules, trips, splits, unsafe_rules}) =
   {combs=combs, rules=no_rules, trips=trips, splits=splits, unsafe_rules=unsafe_rules}

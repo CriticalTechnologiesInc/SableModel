@@ -108,7 +108,7 @@ lemma break_subsetsD:
    apply simp
   apply (case_tac "break f xs")
   apply (elim meta_allE, drule(1) meta_mp)
-  apply (fastforce simp: split_def split: split_if_asm)
+  apply (fastforce simp: split_def split: if_split_asm)
   done
 
 lemma distinct_prop_breakD:
@@ -116,7 +116,7 @@ lemma distinct_prop_breakD:
     \<Longrightarrow> \<forall>y \<in> set ys. \<forall>z \<in> set zs. P y z"
   apply (induct xs arbitrary: ys zs)
    apply simp
-  apply (simp add: split_def split: split_if_asm)
+  apply (simp add: split_def split: if_split_asm)
   apply (case_tac "break f xs")
   apply (elim meta_allE, drule(1) meta_mp)
   apply (frule break_subsetsD)
@@ -137,6 +137,14 @@ lemma init_append_last:
    apply simp
   apply (simp add: init_def)
   done
+
+lemma init_Snoc[simp]:
+  "init (xs @ [x]) = xs"
+  by (induct xs) (auto simp: init_def)
+
+lemma init_upto_enum_upt[simp]:
+  "init [0.e.n] = [0..<n]"
+  by (induct n) (auto simp: init_def)
 
 lemma no_fail_stateAssert:
   "no_fail P (stateAssert P xs)"
@@ -209,8 +217,8 @@ lemma findM_on_outcome':
   apply (induct xs)
    apply (simp, wp)
   apply (simp, wp)
-   apply assumption
-  apply (rule x)
+   apply (rule x)
+  apply simp
   done
 
 
@@ -267,13 +275,13 @@ lemma snd_stateAssert_after:
   "\<not> snd ((do _ \<leftarrow> f; stateAssert R vs od) s) \<Longrightarrow>
   \<not>snd (f s) \<and> (\<forall>(rv, s') \<in> fst (f s). R s')"
   apply (clarsimp simp: bind_def stateAssert_def get_def assert_def 
-      return_def fail_def split_def split: split_if_asm)
+      return_def fail_def split_def split: if_split_asm)
   done
     
 lemma oblivious_stateAssert [simp]:
   "oblivious f (stateAssert g xs) = (\<forall>s. g (f s) = g s)"
   apply (simp add: oblivious_def stateAssert_def exec_get
-                   assert_def return_def fail_def split: split_if)
+                   assert_def return_def fail_def split: if_split)
   apply auto
   done
 
@@ -295,7 +303,7 @@ lemma findM_is_mapME:
                    liftM_def cong: if_cong)
   apply (simp add: liftE_bindE bind_assoc)
   apply (rule bind_cong[OF refl])
-  apply (simp add: bindE_assoc split: split_if)
+  apply (simp add: bindE_assoc split: if_split)
   apply (simp add: liftE_bindE bind_assoc throwError_bind)
   done
 

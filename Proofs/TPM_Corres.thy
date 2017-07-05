@@ -16,7 +16,7 @@ abbreviation "corres \<equiv> corres_underlying SR False True"
 
 end
 
-locale sable_m = sable_isa (*+
+locale sable_m = sable_isa +
   assumes get_authdata_corres: "corres (\<lambda>r r'. R_AUTHDATA_rel r (fst r'))
                                   \<top> \<top> get_authdata get_authdata'"
 
@@ -35,7 +35,7 @@ locale sable_m = sable_isa (*+
       and TPM_NV_ReadValue_corres: "\<And>P P' idx idx' off off' a size' ownerAuth' s'.
         \<lbrakk>idx' = of_nat idx; off' = of_nat off\<rbrakk>
         \<Longrightarrow> corres (R_HEAP_DATA_rel (E_STORED_DATA_rel string_rel)) P P'
-        (TPM_NV_ReadValue idx off a) (TPM_NV_ReadValue' idx' off' size' ownerAuth' s')"*)
+        (TPM_NV_ReadValue idx off a) (TPM_NV_ReadValue' idx' off' size' ownerAuth' s')"
 
 print_locale! sable_m
 

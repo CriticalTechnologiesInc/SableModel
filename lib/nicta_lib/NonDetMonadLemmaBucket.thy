@@ -14,6 +14,7 @@ imports
   "MonadEq"
   "Monad_WP/WhileLoopRulesCompleteness"
   Distinct_Prop
+  "~~/src/HOL/Word/Word_Miscellaneous"
 begin
 setup \<open>AutoLevity_Base.add_attribute_test "wp" WeakestPre.is_wp_rule\<close>
 
@@ -175,11 +176,7 @@ next
   have IH: "\<lbrace>P\<rbrace> zipWithM_x m as bs \<lbrace>\<lambda>rv. P\<rbrace>"
     by fact
   show ?case
-    apply (simp add: zipWithM_x_Cons)
-    apply wp
-     apply (rule IH)
-    apply (rule x)
-    done
+    by (simp add: zipWithM_x_Cons) (wp IH x)
 qed
 
 lemma K_valid[wp]:
@@ -192,10 +189,9 @@ lemma mapME_wp:
   apply (induct xs)
    apply (simp add: mapME_def sequenceE_def)
    apply wp
-  apply (simp add: mapME_Cons)
-  apply wp
    apply simp
-  apply (simp add: x)
+  apply (simp add: mapME_Cons)
+  apply (wp x|simp)+
   done
 
 lemmas mapME_wp' = mapME_wp [OF _ subset_refl]
@@ -228,8 +224,8 @@ lemma mapM_wp:
    apply (simp add: mapM_def sequence_def)
   apply (simp add: mapM_Cons)
   apply wp
-   apply assumption
-  apply (simp add: x)
+   apply (rule x, clarsimp)
+  apply simp
   done
 
 lemma mapM_x_mapM:
@@ -241,12 +237,7 @@ lemma mapM_x_mapM:
 lemma mapM_x_wp:
   assumes x: "\<And>x. x \<in> S \<Longrightarrow> \<lbrace>P\<rbrace> f x \<lbrace>\<lambda>rv. P\<rbrace>"
   shows      "set xs \<subseteq> S \<Longrightarrow> \<lbrace>P\<rbrace> mapM_x f xs \<lbrace>\<lambda>rv. P\<rbrace>"
-  apply (subst mapM_x_mapM)
-  apply wp
-  apply (rule mapM_wp)
-   apply (rule x)
-   apply assumption+
-  done
+  by (subst mapM_x_mapM) (wp mapM_wp x)
 
 lemma mapM_x_Nil:
   "mapM_x f [] = return ()"
@@ -268,9 +259,9 @@ lemma mapM_x_Cons:
 
 lemma mapM_x_inv_wp2:
   assumes post: "\<And>s. \<lbrakk> I s; V [] s \<rbrakk> \<Longrightarrow> Q s"
-  and     hr: "\<And>a as. suffixeq (a # as) xs \<Longrightarrow> \<lbrace>\<lambda>s. I s \<and> V (a # as) s\<rbrace> m a \<lbrace>\<lambda>r s. I s \<and> V as s\<rbrace>"
+  and     hr: "\<And>a as. suffix (a # as) xs \<Longrightarrow> \<lbrace>\<lambda>s. I s \<and> V (a # as) s\<rbrace> m a \<lbrace>\<lambda>r s. I s \<and> V as s\<rbrace>"
   shows   "\<lbrace>I and V xs\<rbrace> mapM_x m xs \<lbrace>\<lambda>rv. Q\<rbrace>"
-proof (induct xs rule: list_induct_suffixeq)
+proof (induct xs rule: list_induct_suffix)
   case Nil thus ?case
     apply (simp add: mapM_x_Nil)
     apply wp
@@ -281,8 +272,7 @@ next
   thus ?case
     apply (simp add: mapM_x_Cons)
     apply wp
-    apply assumption
-    apply (wp hr)
+     apply (wp hr)
     apply assumption
     done
 qed
@@ -320,12 +310,12 @@ proof (induct xs rule: rev_induct)
 next
   case (snoc x xs)
   show ?case
-    apply -
     apply (simp add: mapM_append_single)
     apply (wp snoc.prems)
-    apply simp
-    apply (rule snoc.hyps [OF snoc.prems])
-    apply simp
+      apply simp
+     apply (rule snoc.hyps [OF snoc.prems])
+     apply simp
+    apply assumption
     done
 qed
 
@@ -350,8 +340,8 @@ lemma mapME_x_inv_wp:
   apply (simp add: mapME_x_def sequenceE_x_def)
   apply (fold mapME_x_def sequenceE_x_def)
   apply wp
-   apply assumption
-  apply (rule x)
+   apply (rule x)
+  apply assumption
   done
 
 lemma liftM_return [simp]:
@@ -575,7 +565,7 @@ lemma cutMon_walk_bindE:
   apply (simp add: bindE_def cutMon_walk_bind)
   apply (rule bind_cong, rule refl)
   apply (simp add: cutMon_def lift_def fail_def
-            split: split_if_asm)
+            split: if_split_asm)
   apply (clarsimp split: sum.split)
   done
 
@@ -595,11 +585,11 @@ lemma cutMon_validE_drop:
 lemma assertE_assert:
   "assertE F = liftE (assert F)"
   by (clarsimp simp: assertE_def assert_def liftE_def returnOk_def
-              split: split_if)
+              split: if_split)
 
 lemma snd_cutMon:
   "snd (cutMon P f s) = (P s \<longrightarrow> snd (f s))"
-  by (simp add: cutMon_def fail_def split: split_if)
+  by (simp add: cutMon_def fail_def split: if_split)
 
 lemma exec_modify:
   "(modify f >>= g) s = g () (f s)"
@@ -611,7 +601,7 @@ lemma no_fail_spec:
 
 lemma no_fail_assertE [wp]:
   "no_fail (\<lambda>_. P) (assertE P)"
-  by (simp add: assertE_def split: split_if)
+  by (simp add: assertE_def split: if_split)
 
 lemma no_fail_spec_pre:
   "\<lbrakk> no_fail ((op = s) and P') f; \<And>s. P s \<Longrightarrow> P' s \<rbrakk> \<Longrightarrow> no_fail ((op = s) and P) f"
@@ -619,11 +609,11 @@ lemma no_fail_spec_pre:
 
 lemma no_fail_whenE [wp]:
   "\<lbrakk> G \<Longrightarrow> no_fail P f \<rbrakk> \<Longrightarrow> no_fail (\<lambda>s. G \<longrightarrow> P s) (whenE G f)"
-  by (simp add: whenE_def split: split_if)
+  by (simp add: whenE_def split: if_split)
 
 lemma no_fail_unlessE [wp]:
   "\<lbrakk> \<not> G \<Longrightarrow> no_fail P f \<rbrakk> \<Longrightarrow> no_fail (\<lambda>s. \<not> G \<longrightarrow> P s) (unlessE G f)"
-  by (simp add: unlessE_def split: split_if)
+  by (simp add: unlessE_def split: if_split)
 
 lemma no_fail_throwError [wp]:
   "no_fail \<top> (throwError e)"
@@ -631,10 +621,7 @@ lemma no_fail_throwError [wp]:
 
 lemma no_fail_liftE [wp]:
   "no_fail P f \<Longrightarrow> no_fail P (liftE f)"
-  apply (simp add: liftE_def)
-  apply (rule no_fail_pre, (wp | assumption)+)
-  apply simp
-  done
+  unfolding liftE_def by wpsimp
 
 lemma bind_return_eq:
   "(a >>= return) = (b >>= return) \<Longrightarrow> a = b"
@@ -717,7 +704,7 @@ lemma select_f_asserts:
   "select_f (assert P s) = do assert P; return ((), s) od"
   "select_f (assert_opt v s) = do v' \<leftarrow> assert_opt v; return (v', s) od"
   by (simp add: select_f_def fail_def assert_def return_def bind_def
-                assert_opt_def split: split_if option.split)+
+                assert_opt_def split: if_split option.split)+
 
 lemma liftE_bindE_handle:
   "((liftE f >>=E (\<lambda>x. g x)) <handle> h)
@@ -732,8 +719,7 @@ lemma in_returns [monad_eq]:
 
 lemma assertE_sp:
   "\<lbrace>P\<rbrace> assertE Q \<lbrace>\<lambda>rv s. Q \<and> P s\<rbrace>,\<lbrace>E\<rbrace>"
-  by (clarsimp simp: assertE_def, wp)
-
+  by (clarsimp simp: assertE_def) wp
 
 lemma catch_liftE:
   "catch (liftE g) h = g"
@@ -765,24 +751,24 @@ lemma liftE_bindE_assoc:
 lemma empty_fail_use_cutMon:
   "\<lbrakk> \<And>s. empty_fail (cutMon (op = s) f) \<rbrakk> \<Longrightarrow> empty_fail f"
   apply (clarsimp simp add: empty_fail_def cutMon_def)
-  apply (fastforce split: split_if_asm)
+  apply (fastforce split: if_split_asm)
   done
 
 lemma empty_fail_drop_cutMon:
   "empty_fail f \<Longrightarrow> empty_fail (cutMon P f)"
-  by (simp add: empty_fail_def fail_def cutMon_def split: split_if)
+  by (simp add: empty_fail_def fail_def cutMon_def split: if_split)
 
 lemma empty_fail_cutMon:
   "\<lbrakk> \<And>s. P s \<Longrightarrow> empty_fail (cutMon (op = s) f) \<rbrakk>
     \<Longrightarrow> empty_fail (cutMon P f)"
   apply (clarsimp simp: empty_fail_def cutMon_def fail_def
-                 split: split_if)
-  apply (fastforce split: split_if_asm)
+                 split: if_split)
+  apply (fastforce split: if_split_asm)
   done
 
 lemma empty_fail_If:
   "\<lbrakk> P \<Longrightarrow> empty_fail f; \<not> P \<Longrightarrow> empty_fail g \<rbrakk> \<Longrightarrow> empty_fail (if P then f else g)"
-  by (simp split: split_if)
+  by (simp split: if_split)
 
 lemmas empty_fail_cutMon_intros =
      cutMon_walk_bind[THEN arg_cong[where f=empty_fail], THEN iffD2,
@@ -795,16 +781,16 @@ lemmas empty_fail_cutMon_intros =
 lemma empty_fail_whenEs:
   "empty_fail f \<Longrightarrow> empty_fail (whenE P f)"
   "empty_fail f \<Longrightarrow> empty_fail (unlessE P f)"
-  by (auto simp add: whenE_def unlessE_def empty_fail_error_bits split: split_if)
+  by (auto simp add: whenE_def unlessE_def empty_fail_error_bits split: if_split)
 
 lemma empty_fail_assertE:
   "empty_fail (assertE P)"
-  by (simp add: assertE_def empty_fail_error_bits split: split_if)
+  by (simp add: assertE_def empty_fail_error_bits split: if_split)
 
 lemma unlessE_throw_catch_If:
   "catch (unlessE P (throwError e) >>=E f) g
       = (if P then catch (f ()) g else g e)"
-  by (simp add: unlessE_def catch_throwError split: split_if)
+  by (simp add: unlessE_def catch_throwError split: if_split)
 
 lemma gets_the_return:
   "(return x = gets_the f) = (\<forall>s. f s = Some x)"
@@ -833,7 +819,7 @@ lemma cutMon_assert_opt:
       = gets_the (\<lambda>s. if P s then f s else None) >>= g"
   by (simp add: cutMon_def gets_the_def exec_gets
                 bind_assoc fun_eq_iff assert_opt_def
-         split: split_if)
+         split: if_split)
 
 lemma gets_the_eq_bind:
   "\<lbrakk> \<exists>fn. f = gets_the (fn o fn');
@@ -869,7 +855,7 @@ lemma gets_the_asserts:
   "(assertE P = gets_the h) = (\<forall>s. h s = (if P then Some (Inr ()) else None))"
   by (simp add: assert_def assertE_def
                 gets_the_fail gets_the_returns
-         split: split_if)+
+         split: if_split)+
 
 lemma gets_the_condsE:
   "(\<exists>fn. whenE P f = gets_the (fn o fn'))
@@ -878,7 +864,7 @@ lemma gets_the_condsE:
             = (\<not> P \<longrightarrow> (\<exists>fn. g = gets_the (fn o fn')))"
   by (simp add: whenE_def unlessE_def gets_the_returns
                 ex_const_function
-         split: split_if)+
+         split: if_split)+
 
 lemma no_fail_gets_the [wp]:
   "no_fail (\<lambda>s. f s \<noteq> None) (gets_the f)"
@@ -906,11 +892,11 @@ lemma assert_opt_If:
 
 lemma if_to_top_of_bind:
   "(bind (If P x y) z) = If P (bind x z) (bind y z)"
-  by (simp split: split_if)
+  by (simp split: if_split)
 
 lemma if_to_top_of_bindE:
   "(bindE (If P x y) z) = If P (bindE x z) (bindE y z)"
-  by (simp split: split_if)
+  by (simp split: if_split)
 
 lemma alternative_bind:
   "((a \<sqinter> b) >>= c) = ((a >>= c) \<sqinter> (b >>= c))"
@@ -956,8 +942,7 @@ next
   case (Cons z zs)
   show ?case
     apply (clarsimp simp: mapM_Cons)
-    apply (rule no_fail_pre)
-     apply (wp Cons.prems Cons.hyps hoare_vcg_const_Ball_lift|simp)+
+    apply (wp Cons.prems Cons.hyps hoare_vcg_const_Ball_lift|simp)+
     done
 qed
 
@@ -998,7 +983,7 @@ lemma alternative_liftE_returnOk:
   "(liftE m \<sqinter> returnOk v) = liftE (m \<sqinter> return v)"
   by (simp add: liftE_def alternative_def returnOk_def bind_def return_def)
 
-lemma bind_inv_inv_comm:
+lemma bind_inv_inv_comm_weak:
   "\<lbrakk> \<And>s. \<lbrace>op = s\<rbrace> f \<lbrace>\<lambda>_. op = s\<rbrace>; \<And>s. \<lbrace>op = s\<rbrace> g \<lbrace>\<lambda>_. op = s\<rbrace>;
      empty_fail f; empty_fail g \<rbrakk> \<Longrightarrow>
    do x \<leftarrow> f; y \<leftarrow> g; n od = do y \<leftarrow> g; x \<leftarrow> f; n od"
@@ -1064,6 +1049,35 @@ lemma empty_failD2:
   "\<lbrakk> empty_fail f; \<not> snd (f s) \<rbrakk> \<Longrightarrow> \<exists>v. v \<in> fst (f s)"
   by (fastforce simp add: empty_fail_def)
 
+lemma empty_failD3:
+  "\<lbrakk> empty_fail f; \<not> snd (f s) \<rbrakk> \<Longrightarrow> fst (f s) \<noteq> {}"
+  by (drule(1) empty_failD2, clarsimp)
+
+lemma bind_inv_inv_comm:
+  "\<lbrakk> \<And>P. \<lbrace>P\<rbrace> f \<lbrace>\<lambda>_. P\<rbrace>; \<And>P. \<lbrace>P\<rbrace> g \<lbrace>\<lambda>_. P\<rbrace>;
+     empty_fail f; empty_fail g \<rbrakk> \<Longrightarrow>
+   do x \<leftarrow> f; y \<leftarrow> g; n x y od = do y \<leftarrow> g; x \<leftarrow> f; n x y od"
+  apply (rule ext)
+  apply (rename_tac s)
+  apply (rule_tac s="(do (x, y) \<leftarrow> do x \<leftarrow> f; y \<leftarrow> (\<lambda>_. g s) ; (\<lambda>_. return (x, y) s) od;
+                         n x y od) s" in trans)
+   apply (simp add: bind_assoc)
+   apply (intro bind_apply_cong, simp_all)[1]
+    apply (metis in_inv_by_hoareD)
+   apply (simp add: return_def bind_def)
+   apply (metis in_inv_by_hoareD)
+  apply (rule_tac s="(do (x, y) \<leftarrow> do y \<leftarrow> g; x \<leftarrow> (\<lambda>_. f s) ; (\<lambda>_. return (x, y) s) od;
+                      n x y od) s" in trans[rotated])
+   apply (simp add: bind_assoc)
+   apply (intro bind_apply_cong, simp_all)[1]
+    apply (metis in_inv_by_hoareD)
+   apply (simp add: return_def bind_def)
+   apply (metis in_inv_by_hoareD)
+  apply (rule bind_apply_cong, simp_all)
+  apply (clarsimp simp: bind_def split_def return_def)
+  apply (auto elim!: nonemptyE | drule(1) empty_failD3)+
+  done
+
 lemma throwErrorE_E [wp]:
   "\<lbrace>Q e\<rbrace> throwError e -, \<lbrace>Q\<rbrace>"
   by (simp add: validE_E_def) wp
@@ -1073,13 +1087,7 @@ lemma no_fail_mapM:
   apply (induct xs)
    apply (simp add: mapM_def sequence_def)
   apply (simp add: mapM_Cons)
-  apply (rule no_fail_pre)
-  apply (rule no_fail_bind)
-     apply fastforce
-    apply (erule no_fail_bind)
-     apply (rule no_fail_return)
-    apply wp
-  apply simp
+  apply (wp|fastforce)+
   done
 
 lemma gets_inv [simp]:
@@ -1121,8 +1129,7 @@ lemma injection_wp:
   "\<lbrakk> t = injection_handler f; \<lbrace>P\<rbrace> m \<lbrace>Q\<rbrace>,\<lbrace>\<lambda>ft. E (f ft)\<rbrace> \<rbrakk>
     \<Longrightarrow> \<lbrace>P\<rbrace> t m \<lbrace>Q\<rbrace>,\<lbrace>E\<rbrace>"
   apply (simp add: injection_handler_def)
-  apply wp
-  apply simp
+  apply (wp|simp)+
   done
 
 lemma injection_wp_E:
@@ -1344,10 +1351,7 @@ lemma whenE_whenE_same:
   apply simp
   done
 
-lemma gets_the_inv: "\<lbrace>P\<rbrace> gets_the V \<lbrace>\<lambda>rv. P\<rbrace>"
-  apply wp
-  apply simp
-  done
+lemma gets_the_inv: "\<lbrace>P\<rbrace> gets_the V \<lbrace>\<lambda>rv. P\<rbrace>" by wpsimp
 
 lemma select_f_inv:
   "\<lbrace>P\<rbrace> select_f S \<lbrace>\<lambda>_. P\<rbrace>"
@@ -1363,7 +1367,7 @@ lemma validI:
 lemma opt_return_pres_lift:
   assumes x: "\<And>v. \<lbrace>P\<rbrace> f v \<lbrace>\<lambda>rv. P\<rbrace>"
   shows      "\<lbrace>P\<rbrace> case x of None \<Rightarrow> return () | Some v \<Rightarrow> f v \<lbrace>\<lambda>rv. P\<rbrace>"
-  by (rule hoare_pre, wpcw, wp x, simp)
+  by (rule hoare_pre, (wpcw; wp x), simp)
 
 lemma exec_select_f_singleton:
   "(select_f ({v},False) >>= f) = f v"
@@ -1401,8 +1405,9 @@ lemma filterM_preserved:
   "\<lbrakk> \<And>x. x \<in> set xs \<Longrightarrow> \<lbrace>P\<rbrace> m x \<lbrace>\<lambda>rv. P\<rbrace> \<rbrakk>
       \<Longrightarrow> \<lbrace>P\<rbrace> filterM m xs \<lbrace>\<lambda>rv. P\<rbrace>"
   apply (induct xs)
-   apply (wp | simp | erule meta_mp)+
+   apply (wp | simp | erule meta_mp | drule meta_spec)+
   done
+
 lemma filterM_append:
   "filterM f (xs @ ys) = (do
      xs' \<leftarrow> filterM f xs;
@@ -1944,7 +1949,11 @@ lemma gets_the_bind_eq:
 lemma hoare_const_imp_R:
   "\<lbrace>Q\<rbrace> f \<lbrace>R\<rbrace>,- \<Longrightarrow> \<lbrace>\<lambda>s. P \<longrightarrow> Q s\<rbrace> f \<lbrace>\<lambda>rv s. P \<longrightarrow> R rv s\<rbrace>,-"
   by (cases P, simp_all)
-
+  
+lemma hoare_vcg_imp_lift_R:
+  "\<lbrakk> \<lbrace>P'\<rbrace> f \<lbrace>\<lambda>rv s. \<not> P rv s\<rbrace>, -; \<lbrace>Q'\<rbrace> f \<lbrace>Q\<rbrace>, - \<rbrakk> \<Longrightarrow> \<lbrace>\<lambda>s. P' s \<or> Q' s\<rbrace> f \<lbrace>\<lambda>rv s. P rv s \<longrightarrow> Q rv s\<rbrace>, -"
+  by (auto simp add: valid_def validE_R_def validE_def split_def split: sum.splits)
+  
 lemma hoare_disj_division:
   "\<lbrakk> P \<or> Q; P \<Longrightarrow> \<lbrace>R\<rbrace> f \<lbrace>S\<rbrace>; Q \<Longrightarrow> \<lbrace>T\<rbrace> f \<lbrace>S\<rbrace> \<rbrakk>
      \<Longrightarrow> \<lbrace>\<lambda>s. (P \<longrightarrow> R s) \<and> (Q \<longrightarrow> T s)\<rbrace> f \<lbrace>S\<rbrace>"
@@ -2023,14 +2032,12 @@ next
   show ?case
     apply (simp add: mapME_Cons)
     apply (wp)
-     apply (rule_tac Q' = "\<lambda>xs s. (R s \<and> (\<forall>x \<in> set xs. P x s)) \<and> P x s" in
-       hoare_post_imp_R)
+     apply (rule_tac Q' = "\<lambda>xs s. (R s \<and> (\<forall>x \<in> set xs. P x s)) \<and> P x s" in hoare_post_imp_R)
       apply (wp Cons.hyps minvp)
      apply simp
     apply (fold validE_R_def)
     apply simp
-    apply (rule hoare_pre)
-     apply (wp invr est)
+    apply (wp invr est)
     apply simp
     done
 qed clarsimp
@@ -2092,7 +2099,7 @@ lemma list_case_throw_validE_R:
   "\<lbrakk> \<And>y ys. xs = y # ys \<Longrightarrow> \<lbrace>P\<rbrace> f y ys \<lbrace>Q\<rbrace>,- \<rbrakk> \<Longrightarrow>
    \<lbrace>P\<rbrace> case xs of [] \<Rightarrow> throwError e | x # xs \<Rightarrow> f x xs \<lbrace>Q\<rbrace>,-"
   apply (case_tac xs, simp_all)
-  apply (rule hoare_pre, wp)
+  apply wp
   done
 
 lemma validE_R_sp:
@@ -2111,8 +2118,7 @@ lemma valid_set_take_helper:
 lemma whenE_throwError_sp:
   "\<lbrace>P\<rbrace> whenE Q (throwError e) \<lbrace>\<lambda>rv s. \<not> Q \<and> P s\<rbrace>, -"
   apply (simp add: whenE_def validE_R_def)
-  apply (intro conjI impI)
-   apply wp
+  apply (intro conjI impI; wp)
   done
 
 lemma no_fail_bindE [wp]:
@@ -2129,10 +2135,6 @@ lemma no_fail_bindE [wp]:
   apply (erule hoare_strengthen_post)
   apply clarsimp
   done
-
-lemma when_False:
-  "when False f = return ()"
-  by (simp add: when_def)
 
 lemma empty_fail_mapM_x [simp]:
   "(\<And>x. empty_fail (a x)) \<Longrightarrow> empty_fail (mapM_x a xs)"
@@ -2187,7 +2189,7 @@ lemma oblivious_returnOk [simp]:
 
 lemma oblivious_assertE [simp]:
   "oblivious f (assertE P)"
-  by (simp add: assertE_def split: split_if)
+  by (simp add: assertE_def split: if_split)
 
 
 lemma oblivious_throwError [simp]:
@@ -2212,11 +2214,11 @@ lemma oblivious_catch:
 
 lemma oblivious_when [simp]:
   "oblivious f (when P m) = (P \<longrightarrow> oblivious f m)"
-  by (simp add: when_def split: split_if)
+  by (simp add: when_def split: if_split)
 
 lemma oblivious_whenE [simp]:
   "oblivious f (whenE P g) = (P \<longrightarrow> oblivious f g)"
-  by (simp add: whenE_def split: split_if)
+  by (simp add: whenE_def split: if_split)
 
 lemma select_f_oblivious [simp]:
   "oblivious f (select_f v)"
@@ -2284,7 +2286,7 @@ lemma zipWithM_x_Nil2 :
 lemma assert2:
   "(do v1 \<leftarrow> assert P; v2 \<leftarrow> assert Q; c od)
      = (do v \<leftarrow> assert (P \<and> Q); c od)"
-  by (simp add: assert_def split: split_if)
+  by (simp add: assert_def split: if_split)
 
 lemma assert_opt_def2:
   "assert_opt v = (do assert (v \<noteq> None); return (the v) od)"
@@ -2299,7 +2301,7 @@ lemma gets_assert:
   "(do v1 \<leftarrow> assert v; v2 \<leftarrow> gets f; c v1 v2 od)
      = (do v2 \<leftarrow> gets f; v1 \<leftarrow> assert v; c v1 v2 od)"
   by (simp add: simpler_gets_def return_def assert_def fail_def bind_def
-         split: split_if)
+         split: if_split)
 
 lemma list_case_return2:
   "(case x of [] \<Rightarrow> return v | y # ys \<Rightarrow> return (f y ys))
@@ -2310,7 +2312,7 @@ lemma modify_assert:
   "(do v2 \<leftarrow> modify f; v1 \<leftarrow> assert v; c v1 od)
     = (do v1 \<leftarrow> assert v; v2 \<leftarrow> modify f; c v1 od)"
   by (simp add: simpler_modify_def return_def assert_def fail_def bind_def
-         split: split_if)
+         split: if_split)
 
 lemma gets_fold_into_modify:
   "do x \<leftarrow> gets f; modify (g x) od = modify (\<lambda>s. g (f s) s)"
@@ -2469,7 +2471,7 @@ lemma case_option_find_give_me_a_map:
   apply (induct xs)
    apply simp
    apply (simp add: liftM_def mapME_Nil)
-  apply (simp add: mapME_Cons split: split_if)
+  apply (simp add: mapME_Cons split: if_split)
   apply (clarsimp simp add: throwError_def bindE_def bind_assoc
                             liftM_def)
   apply (rule bind_cong [OF refl])
@@ -2597,7 +2599,9 @@ lemma no_throw_bindE_simple: "\<lbrakk> no_throw \<top> L; \<And>x. no_throw \<t
   apply wp
   done
 
-lemma no_throw_handleE_simple: "\<lbrakk> \<And>x. no_throw \<top> L \<or> no_throw \<top> (R x) \<rbrakk> \<Longrightarrow> no_throw \<top> (L <handle> R)"
+lemma no_throw_handleE_simple: 
+  notes hoare_pre [wp_pre del]
+  shows "\<lbrakk> \<And>x. no_throw \<top> L \<or> no_throw \<top> (R x) \<rbrakk> \<Longrightarrow> no_throw \<top> (L <handle> R)"
   apply (clarsimp simp: no_throw_def)
   apply atomize
   apply clarsimp
@@ -2892,5 +2896,218 @@ lemma liftE_K_bind: "liftE ((K_bind (\<lambda>s. A s)) x) = K_bind (liftE (\<lam
 lemma hoare_assume_preNF:
   "(\<And>s. P s \<Longrightarrow> \<lbrace>P\<rbrace> f \<lbrace>Q\<rbrace>!) \<Longrightarrow> \<lbrace>P\<rbrace> f \<lbrace>Q\<rbrace>!"
   by (metis validNF_alt_def)
+
+lemma bexEI: "\<lbrakk>\<exists>x\<in>S. Q x; \<And>x. \<lbrakk>x \<in> S; Q x\<rbrakk> \<Longrightarrow> P x\<rbrakk> \<Longrightarrow> \<exists>x\<in>S. P x" by blast
+
+lemma monad_eq_split:
+  assumes "\<And>r s. Q r s \<Longrightarrow> f r s = f' r s"
+          "\<lbrace>P\<rbrace> g \<lbrace>\<lambda>r s. Q r s\<rbrace>"
+          "P s"
+  shows "(g >>= f) s = (g >>= f') s"
+proof -
+  have pre: "\<And>rv s'. \<lbrakk>(rv, s') \<in> fst (g s)\<rbrakk> \<Longrightarrow> f rv s' = f' rv s'"
+    using assms unfolding valid_def
+    by (erule_tac x=s in allE) auto
+  show ?thesis
+  apply (simp add: bind_def image_def)
+  apply (intro conjI)
+   apply (rule set_eqI)
+   apply (clarsimp simp: Union_eq)
+   apply (rule iffI; elim exEI conjE; simp; elim exEI bexEI; clarsimp simp: pre)
+  apply (rule iffI; cases "snd (g s)"; simp; elim exEI bexEI; clarsimp simp: pre)
+  done
+qed
+
+lemma monad_eq_split2:
+assumes eq: " g' s = g s"
+assumes tail:"\<And>r s. Q r s \<Longrightarrow> f r s = f' r s"
+and hoare:   "\<lbrace>P\<rbrace>g\<lbrace>\<lambda>r s. Q r s\<rbrace>" "P s"
+shows "(g>>=f) s = (g'>>= f') s"
+proof -
+have pre: "\<And>aa bb. \<lbrakk>(aa, bb) \<in> fst (g s)\<rbrakk> \<Longrightarrow> Q aa bb"
+  using hoare by (auto simp: valid_def)
+show ?thesis
+  apply (simp add:bind_def eq split_def image_def)
+  apply (rule conjI)
+   apply (rule set_eqI)
+   apply (clarsimp simp:Union_eq)
+   apply (metis pre surjective_pairing tail)
+  apply (metis pre surjective_pairing tail)
+  done
+qed
+
+lemma monad_eq_split_tail:
+  "\<lbrakk>f = g;a s = b s\<rbrakk> \<Longrightarrow> (a >>= f) s = ((b >>= g) s)"
+  by (simp add:bind_def)
+
+definition monad_commute where
+  "monad_commute P a b \<equiv>
+  (\<forall>s. (P s \<longrightarrow> ((do x\<leftarrow>a;y\<leftarrow>b; return (x, y) od) s) = ((do y\<leftarrow>b;x\<leftarrow>a; return (x, y) od) s)))"
+
+
+lemma monad_eq:
+  "a s = b s \<Longrightarrow>  (a >>= g) s = (b >>= g) s"
+  by (auto simp:bind_def)
+
+lemma monad_commute_simple:
+  "\<lbrakk>monad_commute P a b;P s\<rbrakk> \<Longrightarrow> ((do x\<leftarrow>a;y\<leftarrow>b; g x y od) s) = ((do y\<leftarrow>b;x\<leftarrow>a; g x y od) s)"
+  apply (clarsimp simp:monad_commute_def)
+  apply (drule spec)
+  apply (erule(1) impE)
+  apply (drule_tac g = "(\<lambda>t. g (fst t) (snd t))" in monad_eq)
+  apply (simp add:bind_assoc)
+  done
+
+lemma commute_commute:
+  "monad_commute P f h \<Longrightarrow> monad_commute P h f"
+  apply (simp (no_asm) add: monad_commute_def)
+  apply (clarsimp)
+  apply (erule monad_commute_simple[symmetric])
+  apply simp
+  done
+
+lemma assert_commute: "monad_commute (K G) (assert G) f"
+  by (clarsimp simp:assert_def monad_commute_def)
+
+lemma cond_fail_commute: "monad_commute (K (\<not>G)) (when G fail) f"
+  by (clarsimp simp:when_def fail_def monad_commute_def)
+
+lemma return_commute: "monad_commute \<top> (return a) f"
+  by (clarsimp simp: return_def bind_def monad_commute_def)
+
+lemma monad_commute_guard_imp:
+  "\<lbrakk>monad_commute P f h; \<And>s. Q s \<Longrightarrow> P s \<rbrakk> \<Longrightarrow> monad_commute Q f h"
+  by (clarsimp simp:monad_commute_def)
+
+lemma monad_commute_split:
+  "\<lbrakk>\<And>r. monad_commute (Q r) f (g r); monad_commute P f h;
+         \<lbrace>P'\<rbrace> h \<lbrace>\<lambda>r. Q r\<rbrace>\<rbrakk>
+   \<Longrightarrow> monad_commute (P and P') f (h>>=g)"
+  apply (simp (no_asm) add:monad_commute_def)
+   apply (clarsimp simp:bind_assoc)
+   apply (subst monad_commute_simple)
+    apply simp+
+   apply (rule_tac Q = "(\<lambda>x. Q x)" in monad_eq_split)
+   apply (subst monad_commute_simple[where a = f])
+    apply assumption
+    apply simp+
+  done
+
+lemma monad_commute_get:
+  assumes hf: "\<And>P. \<lbrace>P\<rbrace> f \<lbrace>\<lambda>r. P\<rbrace>"
+  and hg: "\<And>P. \<lbrace>P\<rbrace> g \<lbrace>\<lambda>r. P\<rbrace>"
+  and eptyf: "empty_fail f" "empty_fail g"
+  shows "monad_commute \<top> f g"
+proof -
+  have fsame: "\<And>a b s. (a,b) \<in> fst (f s) \<Longrightarrow> b = s"
+    by (drule use_valid[OF _ hf],auto)
+  have gsame: "\<And>a b s. (a,b) \<in> fst (g s) \<Longrightarrow> b = s"
+    by (drule use_valid[OF _ hg],auto)
+  note ef = empty_fail_not_snd[OF _ eptyf(1)]
+  note eg = empty_fail_not_snd[OF _ eptyf(2)]
+  show ?thesis
+  apply (simp add:monad_commute_def)
+  apply (clarsimp simp:bind_def split_def return_def)
+  apply (intro conjI)
+   apply (rule set_eqI)
+    apply (rule iffI)
+    apply (clarsimp simp:Union_eq dest!: singletonD)
+    apply (frule fsame)
+    apply clarsimp
+    apply (frule gsame)
+    apply (metis fst_conv snd_conv)
+   apply (clarsimp simp:Union_eq dest!: singletonD)
+   apply (frule gsame)
+   apply clarsimp
+   apply (frule fsame)
+   apply clarsimp
+   apply (metis fst_conv snd_conv)
+  apply (rule iffI)
+   apply (erule disjE)
+    apply (clarsimp simp:image_def)
+    apply (metis fsame)
+   apply (clarsimp simp:image_def)
+   apply (drule eg)
+   apply clarsimp
+   apply (rule bexI [rotated], assumption)
+   apply (frule gsame)
+   apply clarsimp
+  apply (erule disjE)
+   apply (clarsimp simp:image_def dest!:gsame)
+  apply (clarsimp simp:image_def)
+  apply (drule ef)
+  apply clarsimp
+  apply (frule fsame)
+  apply (erule bexI[rotated])
+  apply simp
+  done
+qed
+
+lemma mapM_x_commute:
+assumes commute:
+  "\<And>r. monad_commute (P r) a (b r)"
+and   single:
+  "\<And>r x. \<lbrace>P r and K (f r \<noteq> f x) and P x\<rbrace> b x \<lbrace>\<lambda>v. P r \<rbrace>"
+shows
+  "monad_commute (\<lambda>s. (distinct (map f list)) \<and> (\<forall>r\<in> set list. P r s)) a (mapM_x b list)"
+  apply (induct list)
+   apply (clarsimp simp:mapM_x_Nil return_def bind_def monad_commute_def)
+  apply (clarsimp simp:mapM_x_Cons)
+  apply (rule monad_commute_guard_imp)
+   apply (rule monad_commute_split)
+     apply assumption
+    apply (rule monad_commute_guard_imp[OF commute])
+   apply assumption
+   apply (wp hoare_vcg_ball_lift)
+   apply (rule single)
+  apply (clarsimp simp: image_def)
+  apply auto
+  done
+
+lemma commute_name_pre_state:
+assumes "\<And>s. P s \<Longrightarrow> monad_commute (op = s) f g"
+shows "monad_commute P f g"
+  using assms
+  by (clarsimp simp:monad_commute_def)
+
+lemma commute_rewrite:
+assumes rewrite: "\<And>s. Q s \<Longrightarrow> f s = t s"
+  and   hold  : "\<lbrace>P\<rbrace> g \<lbrace>\<lambda>x. Q\<rbrace>"
+ shows  "monad_commute R t g \<Longrightarrow> monad_commute (P and Q and R) f g"
+   apply (clarsimp simp:monad_commute_def bind_def split_def return_def)
+   apply (drule_tac x = s in spec)
+   apply (clarsimp simp:rewrite[symmetric])
+    apply (intro conjI)
+     apply (rule set_eqI)
+     apply (rule iffI)
+      apply clarsimp
+      apply (rule bexI[rotated],assumption)
+      apply (subst rewrite)
+      apply (rule use_valid[OF _ hold])
+     apply simp+
+    apply (erule bexI[rotated],simp)
+   apply clarsimp
+   apply (rule bexI[rotated],assumption)
+   apply (subst rewrite[symmetric])
+    apply (rule use_valid[OF _ hold])
+   apply simp+
+   apply (erule bexI[rotated],simp)
+  apply (intro iffI)
+   apply clarsimp
+   apply (rule bexI[rotated],assumption)
+   apply simp
+   apply (subst rewrite)
+    apply (erule(1) use_valid[OF _ hold])
+   apply simp
+  apply (clarsimp)
+  apply (drule bspec,assumption)
+  apply clarsimp
+  apply (metis rewrite use_valid[OF _ hold])
+  done
+
+
+lemma commute_grab_asm:
+  "(F \<Longrightarrow> monad_commute P f g) \<Longrightarrow> (monad_commute (P and (K F)) f g)"
+  by (clarsimp simp: monad_commute_def)
 
 end

@@ -136,7 +136,7 @@ where
   "LOCALITY_SELECTION_rel l l' \<equiv> \<forall>loc \<in> l. \<exists>mask. LOCALITY_rel loc (l' AND mask)"
 
 (* FIXME *)
-definition
+(*definition
   PCR_SELECTION_rel :: "TPM.PCR_SELECTION \<Rightarrow> tdTPM_PCR_SELECTION_C \<times> lifted_globals \<Rightarrow> bool"
 where
   "PCR_SELECTION_rel p p' \<equiv> True"
@@ -157,7 +157,7 @@ where
     DIGEST_rel (TPM.PCR_INFO_LONG.digestAtCreation i)
       (tdTPM_PCR_INFO_LONG_C.digestAtCreation_C (fst i')) \<and>
     DIGEST_rel (TPM.PCR_INFO_LONG.digestAtRelease i)
-      (tdTPM_PCR_INFO_LONG_C.digestAtRelease_C (fst i'))"
+      (tdTPM_PCR_INFO_LONG_C.digestAtRelease_C (fst i'))"*)
 
 definition
   PAYLOAD_TYPE_rel :: "PAYLOAD_TYPE \<Rightarrow> 8 word \<Rightarrow> bool"

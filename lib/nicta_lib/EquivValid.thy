@@ -286,7 +286,7 @@ lemma get_bind_ev2:
   apply(rule_tac R'="I And A" in equiv_valid_2_bind_general)
        apply(rule assms, simp+)
       apply(rule get_evrv)
-     apply(wp get_sp)
+     apply(wp get_sp)+
    by(auto)
 
 
@@ -329,7 +329,7 @@ lemma if_ev:
   assumes "b \<Longrightarrow> equiv_valid I A B P f"
   assumes "\<not> b \<Longrightarrow> equiv_valid I A B Q g"
   shows "equiv_valid I A B (\<lambda>s. (b \<longrightarrow> P s) \<and> (\<not>b \<longrightarrow> Q s)) (if b then f else g)"
-  apply (clarsimp split: split_if)
+  apply (clarsimp split: if_split)
   using assms by blast
 
 lemmas if_ev_pre = equiv_valid_guard_imp[OF if_ev]
@@ -494,7 +494,7 @@ lemma liftME_ev:
 
 lemma whenE_ev:
   assumes a: "b \<Longrightarrow> equiv_valid_inv I A P m"
-  shows "equiv_valid_inv I A P (whenE b m)"
+  shows "equiv_valid_inv I A (\<lambda>s. b \<longrightarrow> P s) (whenE b m)"
   unfolding whenE_def by (auto intro: a returnOk_ev_pre)
 
 lemma whenE_throwError_bindE_ev:
@@ -900,8 +900,8 @@ lemma mapM_ev'':
   assumes inv: "\<And> x. x \<in> set lst \<Longrightarrow> \<lbrace> \<lambda>s. \<forall>x\<in>set lst. P x s \<rbrace> m x \<lbrace> \<lambda>_ s. \<forall>x\<in>set lst. P x s \<rbrace>"
   shows "equiv_valid_inv D A (\<lambda> s. \<forall>x\<in>set lst. P x s) (mapM m lst)"
   apply(rule mapM_ev)
-  apply(rule equiv_valid_guard_imp[OF reads_res], simp+)
-  apply(wp inv, simp)
+  apply(rule equiv_valid_guard_imp[OF reads_res]; simp)
+  apply(wpsimp wp: inv)
   done
 
 lemma mapM_x_ev'':
@@ -909,8 +909,8 @@ lemma mapM_x_ev'':
   assumes inv: "\<And> x. x \<in> set lst \<Longrightarrow> \<lbrace> \<lambda>s. \<forall>x\<in>set lst. P x s \<rbrace> m x \<lbrace> \<lambda>_ s. \<forall>x\<in>set lst. P x s \<rbrace>"
   shows "equiv_valid_inv D A (\<lambda> s. \<forall>x\<in>set lst. P x s) (mapM_x m lst)"
   apply(rule mapM_x_ev)
-  apply(rule equiv_valid_guard_imp[OF reads_res], simp+)
-  apply(wp inv, simp)
+  apply(rule equiv_valid_guard_imp[OF reads_res]; simp)
+  apply(wpsimp wp: inv)
   done
 
 lemma catch_ev[wp]:
@@ -984,7 +984,7 @@ lemma if_evrv:
   assumes "b \<Longrightarrow> equiv_valid_rv_inv I A R P f"
   assumes "\<not> b \<Longrightarrow> equiv_valid_rv_inv I A R Q g"
   shows "equiv_valid_rv_inv I A R (\<lambda>s. (b \<longrightarrow> P s) \<and> (\<not>b \<longrightarrow> Q s)) (if b then f else g)"
-  apply (clarsimp split: split_if)
+  apply (clarsimp split: if_split)
   using assms by blast
 
 end
