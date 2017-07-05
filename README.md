@@ -35,7 +35,7 @@ To configure the project:
    directory `src/` and copy `sable_isa.c` to `sable-model/src/`.
 2. In your Isabelle application directory, add the line
    ```
-   L4V_ARCH="ARM"
+   L4V_ARCH="X64"
    ```
    to your `etc/settings` file.
 
