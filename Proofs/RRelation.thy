@@ -66,6 +66,28 @@ where
     | Inr value \<Rightarrow> tdEXCEPTION_C.error_C (TPM_STORED_DATA12_exception_C.exception_C (fst d')) = NONE
         \<and> STORED_DATA_rel vrel value ((TPM_STORED_DATA12_exception_C.value_C (fst d')), snd d')"
 
+abbreviation returnExRel_TPM_STORED_DATA12
+  where "returnExRel_TPM_STORED_DATA12 d d' \<equiv> 
+ case d of
+      Inl error \<Rightarrow> ERROR_rel error (tdEXCEPTION_C.error_C (TPM_STORED_DATA12_exception_C.exception_C ( d')))
+    | Inr value \<Rightarrow> tdEXCEPTION_C.error_C (TPM_STORED_DATA12_exception_C.exception_C ( d')) = NONE"
+
+abbreviation returnExRel_TPM_AUTHDATA
+  where "returnExRel_TPM_AUTHDATA d d' \<equiv> 
+ case d of
+      Inl error \<Rightarrow> ERROR_rel error (tdEXCEPTION_C.error_C (TPM_AUTHDATA_exception_C.exception_C ( d')))
+    | Inr value \<Rightarrow> tdEXCEPTION_C.error_C (TPM_AUTHDATA_exception_C.exception_C ( d')) = NONE"
+
+lemma R_AUTHDATA_rel_lemma: "R_AUTHDATA_rel  d d' \<Longrightarrow>
+     returnExRel_TPM_AUTHDATA d d'" 
+  unfolding R_AUTHDATA_rel_def
+  by (simp add: sum.case_eq_if) 
+    
+lemma R_STORED_DATA_rel_lemma: "R_STORED_DATA_rel vrel d (d',t') \<Longrightarrow>
+      returnExRel_TPM_STORED_DATA12 d ( d')" unfolding R_STORED_DATA_rel_def 
+  unfolding R_STORED_DATA_rel_def
+  by (metis (mono_tags) prod.sel(1) sum.case_eq_if)
+    
 definition (in sable_isa)
   E_STORED_DATA_rel :: "('a :: Hashable) value_rel \<Rightarrow>
                         'a TPM.STORED_DATA \<Rightarrow> heap_data \<times> lifted_globals \<Rightarrow> bool"
@@ -79,4 +101,27 @@ definition
 where
   "string_rel s s' \<equiv> True"
 
+definition cstring_rel :: "string STORED_DATA \<Rightarrow> 8 word ptr \<times> lifted_globals \<Rightarrow> bool"  
+  where
+    "cstring_rel v v'== True"
+
+definition
+  R_cstring_rel :: "(ERROR + string STORED_DATA) \<Rightarrow> CSTRING_exception_C \<times> lifted_globals \<Rightarrow> bool"
+where
+  "R_cstring_rel v v' \<equiv>
+    case v of
+      Inl error \<Rightarrow> ERROR_rel error (tdEXCEPTION_C.error_C (CSTRING_exception_C.exception_C (fst v')))
+    | Inr value \<Rightarrow> tdEXCEPTION_C.error_C (CSTRING_exception_C.exception_C (fst v')) = NONE
+        \<and> cstring_rel value (CSTRING_exception_C.value_C (fst v'),snd v')"
+
+abbreviation returnExRel_CSTRING
+  where "returnExRel_CSTRING v v' \<equiv>
+case v of
+      Inl error \<Rightarrow> ERROR_rel error (tdEXCEPTION_C.error_C (CSTRING_exception_C.exception_C v'))
+    | Inr value \<Rightarrow> tdEXCEPTION_C.error_C (CSTRING_exception_C.exception_C ( v')) = NONE"
+
+lemma R_cstring_rel_lemma: "R_cstring_rel  d (d',t') \<Longrightarrow>
+      returnExRel_CSTRING d ( d')" unfolding R_STORED_DATA_rel_def 
+  unfolding R_cstring_rel_def
+  by (metis (no_types) fst_conv sum.case_eq_if) 
 end

@@ -4,7 +4,7 @@ imports
   "../AutoCorres/Impl"
 begin
 
-type_synonym heap_data = "8 word ptr \<times> 32 word"
+type_synonym heap_data = "8 word ptr \<times> 64 word"
 
 definition
   PCRINDEX_rel :: "TPM.PCRINDEX \<Rightarrow> 32 word \<Rightarrow> bool"
