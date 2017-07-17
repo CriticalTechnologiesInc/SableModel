@@ -252,218 +252,75 @@ lemma trusted_boot_corres:
    apply (rule hoare_post_taut)
   unfolding lift_def
   apply auto
-proof -
-  fix result' sealed_pp sealed_pp'
-  show "corres_underlying UNIV False True (\<lambda>r (r', t'). RESULT_rel r r') (\<lambda>_. True)
-        (\<lambda>s'. R_STORED_DATA_rel string_rel sealed_pp (sealed_pp', s')\<and>
-              result' = tdRESULT_C (tdEXCEPTION_C NONE))
-        (case sealed_pp of Inl e \<Rightarrow> throwError e
-         | Inr v' \<Rightarrow>
-             do v \<leftarrow> get_authdata;
-                case v of Inl e \<Rightarrow> throwError e
-                | Inr v'a \<Rightarrow>
-                    do v \<leftarrow> get_authdata;
-                       case v of Inl e \<Rightarrow> throwError e
-                       | Inr v'b \<Rightarrow> do v \<leftarrow> unseal_passphrase v'b v'a v';
-                                       case v of Inl e \<Rightarrow> throwError e | Inr v' \<Rightarrow> returnOk ()
-                                    od
-                    od
-             od)
-        (\<lambda>s. if error_C (TPM_STORED_DATA12_exception_C.exception_C sealed_pp') \<noteq> 0
-             then return (tdRESULT_C.exception_C_update  (\<lambda>a. TPM_STORED_DATA12_exception_C.exception_C sealed_pp') result') s
-             else (do auth' \<leftarrow> get_authdata';
-                      \<lambda>s. if error_C (TPM_AUTHDATA_exception_C.exception_C auth') \<noteq> 0
-                          then return (tdRESULT_C.exception_C_update
-                                  (\<lambda>a. TPM_AUTHDATA_exception_C.exception_C auth') result') s
-                          else (do ret'a \<leftarrow> get_authdata';
-                                   \<lambda>s. if error_C (TPM_AUTHDATA_exception_C.exception_C ret'a) \<noteq>  0
-                                       then return (tdRESULT_C.exception_C_update
-                                               (\<lambda>a. TPM_AUTHDATA_exception_C.exception_C ret'a) result') s
-                                       else (do ret' \<leftarrow>
-unseal_passphrase' (TPM_AUTHDATA_exception_C.value_C ret'a)
- (TPM_AUTHDATA_exception_C.value_C auth') (TPM_STORED_DATA12_exception_C.value_C sealed_pp');
-return
- (if error_C (CSTRING_exception_C.exception_C ret') \<noteq> 0
-  then tdRESULT_C.exception_C_update (\<lambda>a. CSTRING_exception_C.exception_C ret') result' else result')
-                                             od) s  od)  s  od)  s)"  
-    apply (rule extract_assms_from_corres[where Assm=True 
-          and Assm'="returnExRel_TPM_STORED_DATA12 sealed_pp sealed_pp'"])
-      apply auto
-     apply (rule R_STORED_DATA_rel_lemma,simp)
-    apply (rule simplifyExMonad_TPM_STORED_DATA12)
-    apply (auto simp:NONE_def)
+  apply (rename_tac result' sealed_pp sealed_pp')
+  apply (rule_tac  Assm=True and  Assm'="returnExRel_TPM_STORED_DATA12 sealed_pp sealed_pp'"
+      in extract_assms_from_corres)
+    apply auto
+   apply (rule R_STORED_DATA_rel_lemma, simp)
+  apply (rule simplifyExMonad_TPM_STORED_DATA12)
+  apply (auto simp:NONE_def)
+   defer
+   apply(unfold RESULT_rel_def)[1]
+   apply auto
+  apply(rule_tac Assm=True and Assm'="result' = tdRESULT_C (tdEXCEPTION_C 0)"
+      in extract_assms_from_corres)
+    apply auto
+  apply (rename_tac sealed_pp_val)  
+  apply (subst (1)top_top_top)
+  apply (subst (7)x_eq_top_and_x)
+  apply (rule corres_split)
      defer
-     apply(unfold RESULT_rel_def)[1]
-     apply auto
-    apply(rule extract_assms_from_corres[where Assm=True and Assm'="result' = tdRESULT_C (tdEXCEPTION_C 0)"])
-      apply auto
-  proof-
-    fix sealed_pp_val
-    assume "sealed_pp = Inr sealed_pp_val"
-      and "result' = tdRESULT_C (tdEXCEPTION_C 0)"
-      and "error_C (TPM_STORED_DATA12_exception_C.exception_C sealed_pp') = 0"
-    show "corres_underlying UNIV False True (\<lambda>r (r', t'). RESULT_rel r r') (\<lambda>_. True)
-           (\<lambda>s'. R_STORED_DATA_rel string_rel (Inr sealed_pp_val) (sealed_pp', s'))
-           (get_authdata >>=
-            case_sum throwError
-             (\<lambda>v'a. get_authdata >>=
-                    case_sum throwError
-                     (\<lambda>v'b. unseal_passphrase v'b v'a sealed_pp_val >>=
-                            case_sum throwError (\<lambda>v'. returnOk ()))))
-           (do auth' \<leftarrow> get_authdata';
-               \<lambda>s. if error_C (TPM_AUTHDATA_exception_C.exception_C auth') \<noteq> 0
-                   then return
-                         (tdRESULT_C.exception_C_update
-                           (\<lambda>a. TPM_AUTHDATA_exception_C.exception_C auth')
-                           (tdRESULT_C (tdEXCEPTION_C 0)))
-                         s
-                   else (do ret'a \<leftarrow> get_authdata';
-                            \<lambda>s. if error_C (TPM_AUTHDATA_exception_C.exception_C ret'a) \<noteq> 0
-                                then return
-                                      (tdRESULT_C.exception_C_update
-                                        (\<lambda>a. TPM_AUTHDATA_exception_C.exception_C ret'a)
-                                        (tdRESULT_C (tdEXCEPTION_C 0)))
-                                      s
-                                else (do ret' \<leftarrow>
-                                         unseal_passphrase'
-                                          (TPM_AUTHDATA_exception_C.value_C ret'a)
-                                          (TPM_AUTHDATA_exception_C.value_C auth')
-                                          (TPM_STORED_DATA12_exception_C.value_C sealed_pp');
-                                         return
-                                          (if error_C (CSTRING_exception_C.exception_C ret') \<noteq>
-                                              0
-                                           then tdRESULT_C.exception_C_update
- (\<lambda>a. CSTRING_exception_C.exception_C ret') (tdRESULT_C (tdEXCEPTION_C 0))
-                                           else tdRESULT_C (tdEXCEPTION_C 0))
-                                      od)
-                                      s
-                         od)
-                         s
-            od)"      
-      apply (subst (1 )top_top_top)
-      apply (subst (7)x_eq_top_and_x)
-      apply (rule corres_split)
-         defer
-         apply (rule get_authdata_corres)
-        apply (rule hoare_post_taut)
-       apply (rule hoare_post_taut)
-    proof-
-      fix pp_auth pp_auth'
-      show
-        "corres_underlying UNIV False True (\<lambda>r (r', t'). RESULT_rel r r') (\<lambda>_. True)
-        (\<lambda>s'. R_AUTHDATA_rel pp_auth (fst (pp_auth', s')) \<and> True)
-        (case pp_auth of Inl x \<Rightarrow> throwError x
-         | Inr v'a \<Rightarrow>
-             get_authdata >>=
-             case_sum throwError
-              (\<lambda>v'b. unseal_passphrase v'b v'a sealed_pp_val >>=
-                     case_sum throwError (\<lambda>v'. returnOk ())))
-        (\<lambda>s. if error_C (TPM_AUTHDATA_exception_C.exception_C pp_auth') \<noteq> 0
-             then return
-                   (tdRESULT_C.exception_C_update
-                     (\<lambda>a. TPM_AUTHDATA_exception_C.exception_C pp_auth') (tdRESULT_C (tdEXCEPTION_C 0))) s
-             else (do ret'a \<leftarrow> get_authdata';
-                      \<lambda>s. if error_C (TPM_AUTHDATA_exception_C.exception_C ret'a) \<noteq> 0
-                          then return
-                                (tdRESULT_C.exception_C_update
-                                  (\<lambda>a. TPM_AUTHDATA_exception_C.exception_C ret'a) (tdRESULT_C (tdEXCEPTION_C 0))) s
-                          else (do ret' \<leftarrow>
-                                   unseal_passphrase' (TPM_AUTHDATA_exception_C.value_C ret'a)
-                                    (TPM_AUTHDATA_exception_C.value_C pp_auth')
-                                    (TPM_STORED_DATA12_exception_C.value_C sealed_pp');
-                                   return
-                                    (if error_C (CSTRING_exception_C.exception_C ret') \<noteq> 0
-                                     then tdRESULT_C.exception_C_update
-                                           (\<lambda>a. CSTRING_exception_C.exception_C ret') (tdRESULT_C (tdEXCEPTION_C 0))
-                                     else (tdRESULT_C (tdEXCEPTION_C 0)))
-                                od) s od) s) "
-        apply (rule extract_assms_from_corres[where Assm=True and Assm'="R_AUTHDATA_rel pp_auth pp_auth'"])
-          apply auto
-        apply (rule simplifyExMonad_TPM_AUTHDATA)           
-         apply auto
-          apply (rule R_AUTHDATA_rel_lemma, simp)
-         apply (subst (1)top_top_top)
-         apply (subst (7)x_eq_top_and_x)
-         apply (rule corres_split)
-            defer
-            apply (rule get_authdata_corres)
-           apply (rule hoare_post_taut)
-          apply (rule hoare_post_taut)
-         apply (unfold RESULT_rel_def)[1] apply auto
-      proof -
-        fix srk_auth srk_auth' 
-        fix pp_auth_val
-        assume "R_AUTHDATA_rel (Inr pp_auth_val) pp_auth'"
-          and "error_C (TPM_AUTHDATA_exception_C.exception_C pp_auth') = 0"
-          and "pp_auth = Inr pp_auth_val"
-        show "corres_underlying UNIV False True (\<lambda>r (r', t'). RESULT_rel r r') (\<lambda>_. True) (\<lambda>s'. R_AUTHDATA_rel srk_auth srk_auth')
-        (case srk_auth of Inl x \<Rightarrow> throwError x
-         | Inr v'b \<Rightarrow> unseal_passphrase v'b pp_auth_val sealed_pp_val >>= case_sum throwError (\<lambda>v'. returnOk ()))
-        (\<lambda>s. if error_C (TPM_AUTHDATA_exception_C.exception_C srk_auth') \<noteq> 0
-             then return
-                   (tdRESULT_C.exception_C_update (\<lambda>a. TPM_AUTHDATA_exception_C.exception_C srk_auth')
-                     (tdRESULT_C (tdEXCEPTION_C 0)))
-                   s
-             else (do ret' \<leftarrow>
-                      unseal_passphrase' (TPM_AUTHDATA_exception_C.value_C srk_auth')
-                       (TPM_AUTHDATA_exception_C.value_C pp_auth') (TPM_STORED_DATA12_exception_C.value_C sealed_pp');
-                      return
-                       (if error_C (CSTRING_exception_C.exception_C ret') \<noteq> 0
-                        then tdRESULT_C.exception_C_update (\<lambda>a. CSTRING_exception_C.exception_C ret')
-                              (tdRESULT_C (tdEXCEPTION_C 0))
-                        else tdRESULT_C (tdEXCEPTION_C 0))
-                   od)
-                   s)"
-          apply (rule extract_assms_from_corres[where Assm=True and Assm' = "R_AUTHDATA_rel srk_auth srk_auth'"])
-            apply auto
-          apply (rule simplifyExMonad_TPM_AUTHDATA)
-           defer
-           apply (unfold RESULT_rel_def)[1]
-           apply auto
-           apply (rule R_AUTHDATA_rel_lemma,simp)             
-          apply (subst (1)top_top_top)
-          apply (subst (7)x_eq_top_and_x)
-          apply (rule corres_split)
-             defer defer
-             apply (rule hoare_post_taut)
-            apply (rule hoare_post_taut)             
-           defer
-           apply (rule unseal_passphrase_corres) 
-          using R_AUTHDATA_rel_def apply force
-          using `R_AUTHDATA_rel (Inr pp_auth_val) pp_auth'` 
-          using R_AUTHDATA_rel_def apply force
-        proof -
-          fix rv rv'
-            srk_auth'_value
-          show "R_AUTHDATA_rel (Inr srk_auth'_value) srk_auth' \<Longrightarrow>
-       error_C (TPM_AUTHDATA_exception_C.exception_C srk_auth') = 0 \<Longrightarrow>
-       srk_auth = Inr srk_auth'_value \<Longrightarrow>
-       corres_underlying UNIV False True (\<lambda>r (r', t'). RESULT_rel r r') (\<lambda>_. True)
-        (\<lambda>s'. R_cstring_rel rv (rv', s') \<and> True) (case rv of Inl x \<Rightarrow> throwError x | Inr v' \<Rightarrow> returnOk ())
-        (return
-          (if error_C (CSTRING_exception_C.exception_C rv') \<noteq> 0
-           then tdRESULT_C.exception_C_update (\<lambda>a. CSTRING_exception_C.exception_C rv') (tdRESULT_C (tdEXCEPTION_C 0))
-           else tdRESULT_C (tdEXCEPTION_C 0)))"
-            apply (rule extract_assms_from_corres[where Assm=True and Assm'="returnExRel_CSTRING rv rv'"])
-              apply safe
-             apply (rule R_cstring_rel_lemma, simp)
-            apply (subst  if_distrib[of return _ _])
-            apply (subst simp_if_inside_independent_lambda)
-            apply(rule simplifyExMonad_CSTRING)
-             defer
-             apply (unfold RESULT_rel_def)[1]
-             apply auto[1]
-            apply auto
-            unfolding RESULT_rel_def
-             apply (simp add: returnOk_def2) 
-            by (simp add: returnOk_def2)
-        qed
-      qed
-    qed
-  qed
-qed
-  
-(*lemma refines: "AC_minimal \<sqsubseteq> A_minimal"
+     apply (rule get_authdata_corres)
+    apply (rule hoare_post_taut)+
+  apply (rename_tac pp_auth pp_auth')
+  apply (rule_tac Assm=True and Assm'="R_AUTHDATA_rel pp_auth pp_auth'"
+      in extract_assms_from_corres)
+    apply auto
+  apply (rule simplifyExMonad_TPM_AUTHDATA)           
+   apply auto
+    apply (rule R_AUTHDATA_rel_lemma, simp)
+   apply (subst (1)top_top_top)
+   apply (subst (7)x_eq_top_and_x)
+   apply (rule corres_split)
+      defer
+      apply (rule get_authdata_corres)
+     apply (rule hoare_post_taut)+
+   apply (unfold RESULT_rel_def)[1] apply auto
+  apply(rename_tac pp_auth_val srk_auth srk_auth')
+  apply (rule_tac Assm=True and Assm' = "R_AUTHDATA_rel srk_auth srk_auth'"
+      in extract_assms_from_corres)
+    apply auto
+  apply (rule simplifyExMonad_TPM_AUTHDATA)
+   defer
+   apply (unfold RESULT_rel_def)[1]
+   apply auto
+   apply (rule R_AUTHDATA_rel_lemma,simp)             
+  apply (subst (1)top_top_top)
+  apply (subst (7)x_eq_top_and_x)
+  apply (rule corres_split)
+     defer defer
+     apply (rule hoare_post_taut)+           
+   defer
+   apply (rule unseal_passphrase_corres) 
+  using R_AUTHDATA_rel_def apply force
+  using R_AUTHDATA_rel_def apply force
+  apply(rename_tac srk_auth'_value rv rv')
+  apply (rule_tac Assm=True and Assm'="returnExRel_CSTRING rv rv'"
+      in extract_assms_from_corres)
+    apply safe
+   apply (rule R_cstring_rel_lemma, simp)
+  apply (subst  if_distrib[of return _ _])
+  apply (subst simp_if_inside_independent_lambda)
+  apply(rule simplifyExMonad_CSTRING)
+   defer
+   apply (unfold RESULT_rel_def)[1]
+   apply auto
+  unfolding RESULT_rel_def 
+   apply (simp add: returnOk_def2) 
+  by (simp add: returnOk_def2)
+    
+    
+    (*lemma refines: "AC_minimal \<sqsubseteq> A_minimal"
 proof (rule sim_imp_refines)
   have "A_minimal \<Turnstile> I\<^sub>A" unfolding I\<^sub>A_def by auto
   moreover have "AC_minimal \<Turnstile> I\<^sub>C" unfolding I\<^sub>C_def by auto
