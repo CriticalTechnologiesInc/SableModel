@@ -106,16 +106,12 @@ lemma ERROR_rel_imp_error_not_none_CSTRING:
   "ERROR_rel x1 (error_C (CSTRING_exception_C.exception_C rv'))
     \<Longrightarrow> error_C (CSTRING_exception_C.exception_C rv') \<noteq> NONE"
   unfolding ERROR_rel_def by blast
-    
-lemma extract_assms_from_corres_naive:
-  "Q \<longrightarrow> Q' \<longrightarrow> corres rrel (\<lambda> s. P1 s \<and> Q) (\<lambda>s . P1' s \<and> Q') m m' \<Longrightarrow> 
-   corres rrel (\<lambda> s. P1 s \<and> Q) (\<lambda>s . P1' s \<and> Q') m m'"
-  using corres_False' corres_guard_imp by fastforce
-    
+        
 lemma extract_assms_from_corres:
   "(!s. P s \<longrightarrow> Assm ) \<Longrightarrow> (!s. P' s \<longrightarrow> Assm') \<Longrightarrow> Assm \<and> Assm' \<longrightarrow> corres rrel P P' m m' \<Longrightarrow> 
    corres rrel P P' m m'"
   by (metis corres_req)
+    
 lemma simp_if_inside_independent_lambda: 
   "(if p then f else g) = (\<lambda> s. if p then f s else g s)" 
   by simp
