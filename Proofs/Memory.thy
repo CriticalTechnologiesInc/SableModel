@@ -57,6 +57,8 @@ where "nodeFree s node \<equiv>
     (let size = (mem_node_C.size_C (h_val (hrs_mem (t_hrs_' s)) node)) && scast (~~ MEM_NODE_OCCUPIED_FLAG) in
     \<forall>p \<in> {ptr_val (node +\<^sub>p 1)..+unat size * size_of TYPE(mem_node_C)}.
       snd (hrs_htd (t_hrs_' s) p) = Map.empty)"
+
+lemma eight_eq_eight : "unat (8::32 word) = 8" by simp
     
 definition nodeValid :: "globals \<Rightarrow> mem_node_C ptr \<Rightarrow> bool"
 where "nodeValid s node = 
@@ -64,39 +66,102 @@ where "nodeValid s node =
    let next = node_next s node in
    let size = node_size_masked s node in
    c_guard node \<and> 
-   unat (ptr_val (node +\<^sub>p 1)) + unat (size * 8) \<le> 
-    ( if (next \<noteq> NULL) then unat (ptr_val next) else 2 ^ LENGTH(32)) \<and>
-   unat (size) * 8 < 2 ^ LENGTH(32) \<and>
+   unat (ptr_val node) + 8 + unat (size * 8) \<le> 
+    (if (next \<noteq> NULL) then unat (ptr_val next) else 2 ^ LENGTH(32)) \<and>
+   unat size * 8 < 2 ^ LENGTH(32) \<and>
    (occupied = 0 \<longrightarrow> nodeFree s node) \<and> 
    (next \<noteq> NULL \<longrightarrow> next > node \<and> next \<ge> (node +\<^sub>p 1)) )"
 
 lemma nodeValid_node_size_l1:
   "nodeValid s node \<Longrightarrow>  unat (ptr_val (node +\<^sub>p 1)) + unat ((node_size_masked s node) * 8) \<le> 
-    (2 ^ LENGTH(32))"
+    2 ^ LENGTH(32)"
   unfolding nodeValid_def Let_def
-  apply (subgoal_tac "unat (ptr_val (next_C (h_val (hrs_mem (t_hrs_' s)) node))) < 2 ^ 32")
-   apply (auto simp:if_split)[1]
-  by (metis unat_lt2p word_bits_conv word_bits_len_of)   
+      apply (subgoal_tac "unat (ptr_val (next_C (h_val (hrs_mem (t_hrs_' s)) node))) < 2 ^ LENGTH(32)")
+   apply (auto simp:if_split)[1] sorry(* 
+  by (metis unat_lt2p word_bits_len_of) *)
+lemma nodeValid_node_size_l1_new:
+  "nodeValid s node \<Longrightarrow>  unat (ptr_val node) + 8 + unat ((node_size_masked s node) * 8) \<le> 
+    2 ^ LENGTH(32)" sorry
     
-function nodesValid :: "globals \<Rightarrow> mem_node_C ptr \<Rightarrow> bool"
-where "nodesValid s heap =
-  (nodeValid s heap \<and> ((node_next s heap) \<noteq> NULL \<longrightarrow> nodesValid s (node_next s heap)))"
-by pat_completeness auto
-termination sorry
-declare nodesValid.simps[simp del]  
-  
+lemma nodeValid_node_size_l2:
+  "nodeValid s node \<Longrightarrow>  
+   unat (ptr_val (node +\<^sub>p 1)) + unat (node_size_masked s node) * 8 \<le> 2 ^ LENGTH(32)"
+  unfolding nodeValid_def Let_def    
+  apply (subgoal_tac "unat (ptr_val (node_next s node)) < 2 ^ LENGTH(32)")
+   apply (subgoal_tac "unat (node_size_masked s node) * unat (8::word32) =
+           unat ((node_size_masked s node) * 8)") 
+    apply (auto simp:if_split)[1]
+    sorry(* 
+   apply (clarify)
+   apply (subst (asm) eight_eq_eight[THEN sym])
+   apply (frule unat_mult_lem[THEN iffD1]) 
+   apply simp
+  using unat_lt2p by blast  *)
+lemma nodeValid_node_size_l2_new:
+  "nodeValid s node \<Longrightarrow>  
+   unat (ptr_val node) + 8 + unat (node_size_masked s node) * 8 \<le> 2 ^ LENGTH(32)"
+  sorry
+    
+thm unat_mult_lem[iff]   
+function nodesValid :: "globals \<Rightarrow> mem_node_C ptr \<Rightarrow> bool" where
+ "\<not> (nodeValid s heap) \<Longrightarrow> nodesValid s heap = False"
+|"nodeValid s heap \<and> node_next s heap = NULL \<Longrightarrow> nodesValid s heap = True"
+|"nodeValid s heap \<and> node_next s heap \<noteq> NULL \<Longrightarrow> nodesValid s heap =
+      nodesValid s (node_next s heap)"
+apply auto by blast 
+termination
+  apply (relation "measure (\<lambda> (s,heap). 2 ^ 32 - unat (ptr_val heap))")
+   apply auto
+  unfolding nodeValid_def Let_def
+  apply (clarsimp simp:ptr_less_simp ptr_le_simp)
+  by unat_arith auto
+
+(* FIXME : remove if safe*)    
+(* declare nodesValid.simps[simp del]   *)
+
 lemma nodesValid_def' :"nodesValid s heap =
   (let next = (node_next s heap) in 
     nodeValid s heap \<and> (next \<noteq> NULL \<longrightarrow> nodesValid s next))"
-sorry
+  unfolding Let_def
+  using nodesValid.simps
+  by blast
 
+thm nodesValid.induct    
+lemma nodesValid_induct' :
+  "(\<And>s heap.
+    (node_next s heap \<noteq> NULL \<Longrightarrow>
+     P s (node_next s heap)) \<Longrightarrow>
+    P s heap) \<Longrightarrow>
+  P s node"    
+  sorry
+  
+thm nodesValid.induct
+thm nodesValid.simps
+thm nodesValid_def'
+  
 definition heap_invs :: "globals \<Rightarrow> unit ptr \<Rightarrow> bool"
 where
   "heap_invs s heap \<equiv> nodesValid s (ptr_coerce heap)"
 
-lemma heap_invs_not_null :"heap_invs s heap \<Longrightarrow> heap \<noteq> NULL" 
-  sorry
+lemma nodesValid_nodeValid: "nodesValid s n \<Longrightarrow> nodeValid s n"
+  apply(subst (asm) nodesValid_def') unfolding Let_def by auto
 
+lemma nodesValid_not_null:
+  "nodesValid s heap \<Longrightarrow> heap \<noteq> NULL"
+  by (meson c_guard_NULL_simp nodeValid_def nodesValid_def') 
+      
+lemma heap_invs_not_null :"heap_invs s heap \<Longrightarrow> heap \<noteq> NULL" 
+  unfolding heap_invs_def
+  apply (drule nodesValid_not_null) by auto
+
+lemma nodesValid_not_next_null:
+  "nodesValid s node \<Longrightarrow> \<not> nodesValid s (node_next s node) \<Longrightarrow> (node_next s node) = NULL"
+  using nodesValid.elims by auto 
+
+lemma nodesValid_node_plus_1:
+  "nodesValid s node \<Longrightarrow> node_next s node \<noteq> NULL \<Longrightarrow>
+    (node +\<^sub>p 1) > node"
+sorry
 (* function reachable :: "globals \<Rightarrow> mem_node_C ptr \<Rightarrow> mem_node_C ptr \<Rightarrow> bool"
 where "reachable s node to = (let next = (node_next s node) in
       if node = NULL then to = NULL 
@@ -105,12 +170,6 @@ by pat_completeness auto
 termination apply (relation "measure (\<lambda> (s,heap,n). unat (ptr_val n) - unat (ptr_val heap))")
 apply auto
 sorry *)
-lemma ptr_less_simp : "a < b = (ptr_val a < ptr_val b)" 
-  by (simp add: ptr_less_def ptr_less_def')
-
-lemma ptr_le_simp : "a \<le> b = (ptr_val a \<le> ptr_val b)" 
-  by (simp add: ptr_le_def ptr_le_def')
-lemmas ptr_comp_simps = ptr_less_simp and ptr_le_simp 
   
 function  reachable :: "globals \<Rightarrow> mem_node_C ptr \<Rightarrow> mem_node_C ptr \<Rightarrow> bool"
   where "reachable s NULL to = (to = NULL)"
@@ -133,7 +192,7 @@ thm reachable.simps
 (* declare reachable.simps[simp del] *)
   
 lemma self_reachable: "n \<noteq> NULL \<Longrightarrow> reachable s n n"
-sorry
+  by auto
 
 lemma reachable_helper1[rule_format]: 
   "reachable s node to \<longrightarrow> node \<ge> (node_next s node) \<longrightarrow> to \<noteq> NULL \<longrightarrow> node = to"
@@ -149,8 +208,6 @@ lemma reachable_helper3[rule_format]:
   "reachable s node to \<longrightarrow> node_next s node = NULL \<longrightarrow> node \<noteq> to \<longrightarrow> to = NULL "
   by (rule_tac ?a0.0=s and ?a1.0=node and ?a2.0=to in reachable.induct) auto  
 
-thm reachable.simps(4)
-thm reachable.induct
 lemma reachable_trans[rule_format]:
   "reachable s node to \<longrightarrow> to \<noteq> NULL \<longrightarrow> node_next s to > to \<longrightarrow> 
    reachable s node (node_next s to)"
@@ -158,19 +215,20 @@ lemma reachable_trans[rule_format]:
       apply auto
    apply (rule self_reachable) 
    apply (metis (full_types) ptr_less_def ptr_less_def' ptr_val.ptr_val_def word_not_simps(1))
-  apply (simp add: sable_isa.ptr_less_simp)   
+  apply (simp add: ptr_less_simp)   
   apply (rule reachable.simps(4)[THEN iffD2])
    apply auto
    apply (drule_tac node="node_next s (node_next s to)" in reachable_helper2)
     apply simp
-  by (auto simp: ptr_le_simp ptr_less_simp)
+  by (auto simp: ptr_le_simp ptr_less_simp)  
   
-  
-lemma reachable_trans2:
-  "reachable s node to \<Longrightarrow> node_next s to = NULL \<Longrightarrow> reachable s node (node_next s to)"
-  sorry
-  
+lemma reachable_trans2[rule_format]:
+  "reachable s node to \<longrightarrow> to \<noteq> NULL \<longrightarrow> node_next s to = NULL \<longrightarrow> 
+   reachable s node (node_next s to)"
+  apply (rule_tac ?a0.0=s and ?a1.0=node and ?a2.0=to in  reachable.induct)
+  by auto
 
+(* FIXME remove this *)    
 function reachable_old :: "globals \<Rightarrow> mem_node_C ptr \<Rightarrow> mem_node_C ptr \<Rightarrow> bool"
 where "reachable_old s heap n = (heap \<noteq> NULL \<and>
       (heap = n \<or> 
@@ -180,24 +238,6 @@ by pat_completeness auto
 termination apply (relation "measure (\<lambda> (s,heap,n). unat (ptr_val n))")
 apply auto
   oops
-    
-function pathIncl :: "globals \<Rightarrow> mem_node_C ptr \<Rightarrow> mem_node_C ptr \<Rightarrow> mem_node_C ptr list"
-  where "pathIncl s node to =  
-        (if node = to then [node]
-         else if node \<noteq> NULL \<and> 
-            ptr_val (node_next s node) > ptr_val node \<and> 
-            ptr_val node < ptr_val to \<and>
-            ptr_val (node_next s node) \<le> ptr_val to 
-          then node # (pathIncl s (node_next s node) to) 
-          else [])"
-by pat_completeness auto
-termination sorry    
-
- 
-fun pathInclReachable :: "globals \<Rightarrow> mem_node_C ptr \<Rightarrow> mem_node_C ptr \<Rightarrow> bool"
-  where "pathInclReachable s from to =
-          (to \<in> set (pathIncl s from to) )"
-
 
 lemma updated_node_hrs_the_same_elsewhere_correct:
   assumes x_val:"x \<notin> ptr_span p"
@@ -238,12 +278,14 @@ thm t_hrs_'_def
 lemma updated_node_blahblah:
   "x \<ge> ptr_val (p+\<^sub>p 1) \<and> x \<ge> ptr_val (q +\<^sub>p 1) \<Longrightarrow> 
     hrs_the_same_at s (update_node (update_node s p new_node_1) q new_node_2 ) x"
+  (* FIXME error *)
 using updated_node_hrs_the_same_elsewhere
 by presburger
 
 lemma updated_node_blahblah_2:
   "x < ptr_val p \<and> x < ptr_val q \<Longrightarrow> 
     hrs_the_same_at s (update_node (update_node s p new_node_1) q new_node_2 ) x"
+   (* FIXME error *)
 using updated_node_hrs_the_same_elsewhere
 by presburger  
 
@@ -260,14 +302,12 @@ function path :: "globals \<Rightarrow> mem_node_C ptr \<Rightarrow> mem_node_C 
 termination
   apply (relation "measure (\<lambda> (s,node,to).2 ^ 32 + unat (ptr_val to) - unat (ptr_val node))")
    apply (auto simp:ptr_less_simp ptr_le_simp)
-  by unat_arith  
-   
-thm path.simps(1)
-thm path.induct
+  by unat_arith     
+
 lemma path_not_empty_node_cond[rule_format]: "set (path s node to) \<noteq> {} \<longrightarrow> 
         node \<noteq> NULL \<and>
-        ptr_val node < ptr_val (next_C (h_val (hrs_mem (t_hrs_' s)) node)) \<and>
-        ptr_val node < ptr_val to \<and> ptr_val (next_C (h_val (hrs_mem (t_hrs_' s)) node)) \<le> ptr_val to"
+        ptr_val node < ptr_val (node_next s node) \<and>
+        ptr_val node < ptr_val to \<and> ptr_val (node_next s node) \<le> ptr_val to"
   apply (simp add:ptr_less_simp[THEN sym] ptr_le_simp[THEN sym] )
   apply (rule contrapos[THEN iffD2])
   apply (clarsimp)
@@ -324,7 +364,8 @@ lemma hrs_the_same_imp_nodeValid:
   apply (frule hrs_the_same_nodes_the_same) apply auto[1]
   done
     
-lemma nodeValid_imp_range_l:"ptr_val n < ptr_val to \<Longrightarrow> nodeValid s n \<Longrightarrow> nodeValid s to \<Longrightarrow> 
+lemma nodeValid_imp_range_l:
+  "ptr_val n < ptr_val to \<Longrightarrow> nodeValid s n \<Longrightarrow> nodeValid s to \<Longrightarrow> 
       \<forall> p \<in>{ptr_val n ..+ size_of (TYPE(mem_node_C))}. p < ptr_val to"
   sorry
     
@@ -332,13 +373,11 @@ lemma "nodesValid s heap \<Longrightarrow>
        \<forall> p . p \<ge> ptr_val heap \<and> p < ptr_val (last_node +\<^sub>p 1) \<longrightarrow>  hrs_the_same_at s s' p
        \<Longrightarrow> \<forall> n \<in> set (path s heap last_node). nodeValid s' n"
   sorry
-      
-    
+          
 lemma nodesValid_trans_back: "nodeValid s node \<Longrightarrow> 
-    nodesValid s next \<Longrightarrow> 
-    node_next s node = next \<Longrightarrow>
+    nodesValid s (node_next s node) \<Longrightarrow>
     nodesValid s node"
-sorry
+  by(subst nodesValid_def', simp)
 
 thm nodesValid.induct[simplified]
 lemma nodesValid_reachable_imp_nodesValid: 
@@ -346,10 +385,9 @@ lemma nodesValid_reachable_imp_nodesValid:
    nodesValid s fst_node \<Longrightarrow>  
    node \<noteq> NULL \<Longrightarrow> 
    nodesValid s node"
-proof (induction fst_node rule:nodesValid.induct)
+proof (induction fst_node rule:nodesValid_induct')
   fix s heap
-  assume ih: "(\<And>x. x = next_C (h_val (hrs_mem (t_hrs_' s)) heap) \<Longrightarrow>
-             x \<noteq> NULL \<Longrightarrow>            
+  assume ih: "( next_C (h_val (hrs_mem (t_hrs_' s)) heap) \<noteq> NULL \<Longrightarrow>            
              reachable s (next_C (h_val (hrs_mem (t_hrs_' s)) heap)) node \<Longrightarrow>
              nodesValid s (next_C (h_val (hrs_mem (t_hrs_' s)) heap)) \<Longrightarrow>
              node \<noteq> NULL \<Longrightarrow> nodesValid s node)"
@@ -357,19 +395,26 @@ proof (induction fst_node rule:nodesValid.induct)
     and "reachable s heap node"
     and "node \<noteq> NULL"
   let ?heap_next = "node_next s heap"
-  {assume "?heap_next = NULL"
-    hence "node = NULL" using `nodesValid s heap` `reachable s heap node`   sorry
-    with `node \<noteq> NULL` have False by auto
-  } hence "?heap_next \<noteq> NULL" by auto
-  moreover from `nodesValid s heap` `?heap_next \<noteq> NULL` have "nodesValid s ?heap_next" 
-    by (meson sable_isa.nodesValid.simps)  
-  moreover from `reachable s heap node` `node \<noteq> NULL` `?heap_next \<noteq> NULL`
-  have "reachable s ?heap_next node" 
-    using reachable.simps reachable_trans
-    (* by (metis ptr.exhaust ptr_less_def ptr_less_def' ptr_val_def updated_node_val word_neq_0_conv) *)
-    sorry      
-  ultimately show "nodesValid s node"
-    using `node \<noteq> NULL` ih  by blast 
+  {
+    assume "node = heap"
+    hence "nodesValid s node" using `nodesValid s heap` by auto
+  }
+  moreover {
+    assume "node \<noteq> heap"
+    {assume "?heap_next = NULL"
+      hence "node = NULL" using `node \<noteq> heap` `nodesValid s heap` `reachable s heap node` 
+        using sable_isa.reachable_helper3 by blast 
+      with `node \<noteq> NULL` have False by auto
+    } hence "?heap_next \<noteq> NULL" by auto
+    moreover from `nodesValid s heap` `?heap_next \<noteq> NULL` have "nodesValid s ?heap_next" 
+      by (meson sable_isa.nodesValid_def')  
+    moreover from `reachable s heap node` `node \<noteq> NULL` `?heap_next \<noteq> NULL` `node \<noteq> heap`
+    have "reachable s ?heap_next node"  
+      using reachable.elims(2) by blast
+    ultimately have "nodesValid s node"
+      using `node \<noteq> NULL` ih  by blast   
+  }
+  ultimately show "nodesValid s node" by auto 
 qed
   
 lemma nodesValid_reachable_imp_next_reachable: 
@@ -385,15 +430,16 @@ proof-
     and reachable: "reachable s fst_node node"
     and  "node \<noteq> NULL" 
     and  "nodesValid s node"    
-  have "nodeValid s node" using `nodesValid s node` nodesValid.simps by metis
+  have "nodeValid s node" using `nodesValid s node` nodesValid_def' by metis
   {assume "node_next s node \<noteq> NULL"
     hence "node_next s node > node" using `nodeValid s node` unfolding nodeValid_def
       by meson
-    hence "reachable s fst_node (node_next s node)" using reachable reachable_trans
-       by presburger
-  } moreover{ assume "node_next s node = NULL"
-    hence "reachable s fst_node (node_next s node)" using reachable reachable_trans2
+    hence "reachable s fst_node (node_next s node)" 
+      using reachable `node \<noteq> NULL` reachable_trans
       by presburger
+  } moreover{ assume "node_next s node = NULL"
+    hence "reachable s fst_node (node_next s node)" using reachable `node \<noteq> NULL` 
+      reachable_trans2 by presburger
   }
   ultimately show "reachable s fst_node (node_next s node)" by argo
 qed      
@@ -401,13 +447,14 @@ qed
 lemma nodesValid_reachable_imp_nodeValid: "nodesValid s heap \<Longrightarrow> reachable s  heap node
       \<Longrightarrow> node \<noteq> NULL \<Longrightarrow> nodeValid s node"
   apply (drule nodesValid_reachable_imp_nodesValid)
-  by assumption+ (meson nodesValid.simps)
+  by assumption+ (meson nodesValid_def')
     
 thm word_mult_le_mono1
 
-lemma l10: "unat x + unat y < 2 ^ 32 \<Longrightarrow>y \<noteq> 0 \<Longrightarrow> (x:: word32) div ( y :: word32) * y + y \<ge> x"
-apply unat_arith
-apply auto
+lemma l10: "unat x + unat y < 2 ^ 32 \<Longrightarrow>y \<noteq> 0 \<Longrightarrow> 
+            ((x:: word32) div ( y :: word32)) * y + y \<ge> x"
+  apply (subgoal_tac "unat (x div y * y) = (unat x div unat y) * unat y")
+
 sorry
 
 lemma l11:"((x::word32) || (scast (y::  32 signed word))) && (scast (~~y)) = x && (scast (~~y))"
@@ -432,26 +479,23 @@ qed
 (* declare [[show_types]]  *)
 (* declare [[show_sorts]] *)
 (* declare [[show_consts]] *)
-thm alloc'_def
-thm nodeValid_def
-print_record globals
-
-lemma nodesValid_not_null:
-  "nodesValid s heap \<Longrightarrow> heap \<noteq> NULL"
-  by (meson c_guard_NULL_simp nodeValid_def nodesValid_def') 
-    
+  
 lemma hrs_the_sam_nodesValid_reachable_imp_reachable:
   assumes "reachable s heap node"
     and "nodesValid s heap"
     and "\<forall>p . p \<ge> ptr_val heap \<and> p < ptr_val node \<longrightarrow> hrs_the_same_at s s' p"
   shows "reachable s' heap node" 
   sorry
-
-lemma node_in_path_nodesValid_imp_nodeValid_node:
-  assumes "n \<in> set (path s fst_node to)" 
-    and "nodesValid s fst_node"
-  shows "nodeValid s n" 
-  sorry
+    
+lemma node_in_path_nodesValid_imp_nodeValid_node[rule_format]:
+  "n \<in> set (path s fst_node to) \<longrightarrow> 
+   nodesValid s fst_node \<longrightarrow>
+   nodeValid s n" 
+  apply (rule_tac ?a0.0=s and ?a1.0=fst_node and ?a2.0= to in path.induct)
+   apply auto 
+    apply (erule nodesValid_nodeValid)+
+  apply (frule nodesValid_not_next_null)
+  by auto
 
 thm path.simps
 thm nodeValid_def 
@@ -481,29 +525,196 @@ proof-
     path.simps(2) by fast
   thus ?thesis by simp
 qed
+
+lemma node_reachable_in_path[rule_format]:
+  "reachable s node to \<longrightarrow> node \<noteq> to\<longrightarrow> to \<noteq> NULL \<longrightarrow> node \<in> set (path s node to )"
+  apply(rule_tac ?a0.0=s and ?a1.0=node and ?a2.0=to in reachable.induct)
+      apply auto
+  apply(subgoal_tac "set (path s (node_next s node) to) \<noteq> {}")
+   apply (frule path_not_empty_node_cond)
+   apply (subgoal_tac "(node_next s node) \<le> to")
+  by (auto simp:ptr_le_simp ptr_less_simp)
     
+lemma nodeValid_edge_of_addr_space:
+  assumes "nodeValid s node"
+    shows "(node +\<^sub>p 1) > node \<or> (node_size_masked s node) = 0"
+  unfolding nodeValid_def
+proof -
+  have "unat (node_size_masked s node) * 8 < 2 ^ LENGTH(32)" using `nodeValid s node`
+    unfolding nodeValid_def by meson
+  hence "unat (node_size_masked s node) * 8 = unat ((node_size_masked s node) * 8)"
+    using unat_mult_lem  by (metis sable_isa.eight_eq_eight)
+  {assume "(node_size_masked s node) \<noteq> 0"    
+    hence "(node_size_masked s node) * 8 \<noteq> 0"
+      using `unat (node_size_masked s node) * 8 = unat ((node_size_masked s node) * 8)`
+      using unat_eq_zero by fastforce
+    hence "unat (ptr_val node) + 8 < 2 ^ LENGTH(32)" 
+      using `nodeValid s node` apply simp
+      apply (frule nodeValid_node_size_l1_new) 
+      apply auto
+      by (meson add_le_same_cancel1 le_def less_le_trans not_gr_zero unat_eq_zero) 
+    hence "(node +\<^sub>p 1) > node" 
+      unfolding ptr_add_def 
+      apply (simp add:ptr_less_simp)
+      by unat_arith auto
+  } thus ?thesis by fast
+qed
+  
+lemma intvl_no_overflow_lower_bound:
+  "(a :: 32 word) \<in> {x ..+  sz} \<Longrightarrow> unat x + sz \<le> 2 ^ LENGTH(32) \<Longrightarrow> a \<ge> x"
+  apply unat_arith unfolding intvl_def  apply unat_arith
+  apply auto 
+  apply (subgoal_tac "unat (of_nat k) = k")
+   apply (smt Divides.mod_less_eq_dividend add.commute add_diff_cancel_right' le_less_trans len_of_addr_card less_diff_conv unat_of_nat)
+  apply(rule unat_of_nat32') 
+  by simp
+    
+lemma nodeValid_heaps_eq_imp_nodeValid:
+  assumes "nodeValid s node"
+    and heaps_eq:"\<forall>x. x \<ge> ptr_val node \<longrightarrow> hrs_the_same_at s s' x"
+  shows " nodeValid s' node"
+proof-
+  let ?node_size = "(node_size_masked s node)"
+  have "c_guard node" using `nodeValid s node` unfolding nodeValid_def by meson
+  have "unat ?node_size * 8 < 2 ^ LENGTH(32)" using `nodeValid s node`
+    unfolding nodeValid_def by meson
+  hence "unat ?node_size * 8 = unat (?node_size * 8)"
+    using unat_mult_lem  by (metis sable_isa.eight_eq_eight)
+  have 0:"unat (ptr_val (node +\<^sub>p 1)) + unat (?node_size * 8) \<le>  2 ^ LENGTH(32)"
+    using `nodeValid s node` by (rule nodeValid_node_size_l1)      
+  have "\<forall> p \<in> ptr_span node. p \<ge> ptr_val node" 
+    using `c_guard node` unfolding c_guard_def c_null_guard_def
+    apply auto
+    apply (drule zero_not_in_intvl_no_overflow)
+    apply (erule intvl_no_overflow_lower_bound) by assumption
+  hence 1:"\<forall> p \<in> ptr_span node. hrs_the_same_at s s' p" using heaps_eq
+    by blast
+  have 2:"\<forall> p \<in> array_span (node +\<^sub>p 1) (unat ?node_size). p \<ge> ptr_val (node +\<^sub>p 1)"
+    using 0
+      `unat ?node_size * 8 = unat (?node_size * 8)`
+    unfolding intvl_def
+    apply unat_arith
+    apply auto 
+    by (simp add: nat_less_le order_less_le_trans unat_of_nat_eq)
+  {
+    assume "(node +\<^sub>p 1) > node"
+    hence "\<forall>p \<in> array_span (node +\<^sub>p 1) (unat ?node_size). hrs_the_same_at s s' p"   
+      using 2 heaps_eq 
+      by (meson dual_order.strict_iff_order less_le_trans ptr_less_def ptr_less_def')
+  }moreover {
+    assume "\<not>(node +\<^sub>p 1) > node"
+    hence "?node_size = 0" 
+      using `nodeValid s node` nodeValid_edge_of_addr_space by blast
+    hence "array_span (node +\<^sub>p 1) (unat ?node_size) = {}"
+      by simp
+    hence "\<forall>p \<in> array_span (node +\<^sub>p 1) (unat ?node_size). hrs_the_same_at s s' p"   
+      by blast
+  }
+  ultimately have 3:"\<forall>p \<in> array_span (node +\<^sub>p 1) (unat ?node_size). hrs_the_same_at s s' p"
+    by blast
+  show ?thesis using `nodeValid s node` 1 3 hrs_the_same_imp_nodeValid by blast
+qed
+  
+lemma nodesValid_heaps_eq_imp_nodesValid[rule_format]:
+  "nodesValid s node \<longrightarrow> 
+   (\<forall>x. x \<ge> ptr_val node \<longrightarrow> hrs_the_same_at s s' x) \<longrightarrow>
+   nodesValid s' node"
+  apply (rule_tac ?a0.0=s and ?a1.0=node in nodesValid.induct)
+    apply auto[1]
+   defer
+   apply clarify
+    defer
+proof clarify
+  fix s heap
+  assume "nodeValid s heap"
+       "node_next s heap = NULL"
+       "nodesValid s heap"
+       and hrs_the_same:"\<forall>x\<ge>ptr_val heap. hrs_the_same_at s s' x"  
+  have "c_guard heap" using `nodeValid s heap` unfolding nodeValid_def by meson
+  hence "\<forall> p \<in> ptr_span heap. p \<ge> ptr_val heap" 
+     unfolding c_guard_def c_null_guard_def
+    apply auto
+    apply (drule zero_not_in_intvl_no_overflow)
+    apply (erule intvl_no_overflow_lower_bound) by assumption
+  hence "\<forall> p \<in> ptr_span heap. hrs_the_same_at s s' p" using hrs_the_same by blast
+  hence "node_val s heap = node_val s' heap" using hrs_the_same_nodes_the_same by blast     
+  hence "node_next s' heap = NULL" using `node_next s heap = NULL` by argo
+  
+  have "nodeValid s' heap" using `nodeValid s heap` hrs_the_same 
+    using nodeValid_heaps_eq_imp_nodeValid by blast
+  show "nodesValid s' heap" using `node_next s' heap = NULL` `nodeValid s' heap`
+       by auto
+next 
+  fix s heap
+  assume ih: "nodesValid s (node_next s heap) \<longrightarrow>
+          (\<forall>x\<ge>ptr_val (node_next s heap).hrs_the_same_at s s' x) \<longrightarrow>
+          nodesValid s' (node_next s heap)"
+       and "nodeValid s heap"
+       and "node_next s heap \<noteq> NULL"
+       and "nodesValid s heap"
+       and hrs_the_same:"\<forall>x\<ge>ptr_val heap. hrs_the_same_at s s' x"
+  have "c_guard heap" using `nodeValid s heap` unfolding nodeValid_def by meson
+  have "\<forall>p \<in> ptr_span heap. hrs_the_same_at s s' p" using `c_guard heap` hrs_the_same
+    unfolding c_guard_def c_null_guard_def
+    unfolding intvl_def apply simp
+    by (meson le_def less_le_trans word_wrap_of_natD) 
+  hence "node_val s heap = node_val s' heap" using hrs_the_same_nodes_the_same by blast
+  have "node_next s heap > heap" using `nodeValid s heap` `node_next s heap \<noteq> NULL`
+    unfolding nodeValid_def by meson
+  have "nodesValid s (node_next s heap)"
+    using `node_next s heap \<noteq> NULL` `nodesValid s heap` 
+    using nodesValid.simps by blast
+  moreover have "(\<forall>x\<ge>ptr_val (node_next s heap).hrs_the_same_at s s' x)"
+    using hrs_the_same `node_next s heap > heap`
+    by (simp add: ptr_less_simp) 
+  ultimately have "nodesValid s' (node_next s heap)" using ih by blast
+  hence "nodesValid s' (node_next s' heap)" 
+    using `node_val s heap = node_val s' heap` by argo      
+  moreover have "nodeValid s' heap" using hrs_the_same `nodeValid s heap` 
+    using nodeValid_heaps_eq_imp_nodeValid by blast
+  ultimately show "nodesValid s' heap" using nodesValid_trans_back by fast
+qed
+  
+thm nodesValid.simps  
 lemma nodesValid_l1:
 assumes "nodesValid s node" 
     and "nodeValid s' node"
     and "c_guard (node +\<^sub>p 1)"
     and "\<forall>x. x \<ge> ptr_val (node +\<^sub>p 1) \<longrightarrow> hrs_the_same_at s s' x"
 shows "nodesValid s' node"
-sorry
-
-lemma nodesValid_l2:
-      "nodeValid s heap \<Longrightarrow>
-       \<forall> p \<in> set (path s heap node). nodeValid s p \<Longrightarrow>
-       reachable s heap node \<Longrightarrow>
-       nodesValid s node \<Longrightarrow>
-       nodesValid s heap"
   sorry
+
+thm nodesValid_reachable_imp_in_path
+lemma nodesValid_l2[rule_format]:
+      "nodeValid s heap \<longrightarrow>
+       (\<forall> p \<in> set (path s heap node). nodeValid s p) \<longrightarrow>
+       reachable s heap node \<longrightarrow>
+       nodesValid s node \<longrightarrow>
+       nodesValid s heap"
+  apply (rule_tac ?a0.0=s and ?a1.0=heap and ?a2.0=node in path.induct) 
+   apply (unfold nodeValid_def)[1] unfolding Let_def
+   apply clarify
+   apply (drule c_guard_NULL)
+   apply auto[1]
+        apply (metis sable_isa.nodesValid_not_null sable_isa.reachable_helper1)
+       apply (metis reachable_helper1 sable_isa.nodesValid_not_null)
+  using reachable_helper3 apply blast
+     apply (metis dual_order.strict_iff_order order_less_le_trans sable_isa.nodesValid_not_null sable_isa.reachable.simps(4) sable_isa.reachable_helper2)
+  using reachable_helper3 apply blast
+   apply (metis dual_order.strict_iff_order order_less_le_trans reachable_helper2 sable_isa.nodesValid_not_null sable_isa.reachable.simps(4))   
+  apply auto
+   apply (frule node_reachable_in_path)
+     apply auto
+     (* FIXME error *)
+    apply (frule nodesValid_nodeValid, auto)
+   apply (frule nodesValid_not_null, auto)
+  using sable_isa.nodesValid_def' unfolding Let_def by blast
     
 lemma nodesValid_l3:
   "nodeValid s node \<Longrightarrow>
    node_next s node = NULL \<Longrightarrow>
     nodesValid s node"
   by (meson nodesValid_def')
-
   
 lemma c_guard_l1:
   assumes "c_guard (a::('a::mem_type) ptr)"
@@ -567,7 +778,7 @@ proof -
       hence 3:"ptr_val b + of_nat (unat ?k2') = 0" by simp
       have "ptr_val b - ptr_val a > 0" using `ptr_val b > ptr_val a` 
         using word_neq_0_conv by fastforce 
-      with 2 have "?k2' < of_nat (size_of TYPE('a))"  by unat_arith (* SLOW! *)
+      with 2 have "?k2' < of_nat (size_of TYPE('a))"  by unat_arith (* VERY SLOW! *)
       hence "unat ?k2' < size_of TYPE('a)" using unat_less_helper by auto
       with 3 have "ptr_val b + of_nat (unat ?k2') = 0 \<and> unat ?k2' < size_of TYPE('a)" by auto
       hence "\<exists>k::nat. ptr_val b + of_nat k = (0::32 word) \<and> k < size_of TYPE('a)" by (frule exI)  
@@ -577,11 +788,9 @@ proof -
   qed 
   thus "\<not> c_null_guard b" unfolding c_null_guard_def by auto
 qed
-  
-lemma eight_eq_eight : "unat (8::32 word) = 8" by simp
+
 lemma self_impl: "Q \<Longrightarrow> Q" by assumption
-thm init_heap'_def
-thm reachable.simps
+
 lemma alloc'_invs:
   fixes size_bytes:: "32 word" and heap:: "unit ptr"
   assumes size_bytes_g0 : "size_bytes > 0"
@@ -614,14 +823,11 @@ lemma alloc'_invs:
      apply(drule c_guard_NULL, drule nodesValid_reachable_imp_next_reachable, auto)    
     prefer 3
     apply (wp, auto)
-           apply (rule self_reachable, simp)
-          apply (drule nodesValid_not_null, simp)
-         apply (rule self_reachable, simp)
-        apply (drule one_mask_neg_MNOF_not_zero, auto)
-       apply (drule nodesValid_not_null, simp)
-      apply (rule self_reachable, simp)
-     apply (frule mask_sw32_eq_0_eq_x, solves simp)
+     apply (drule nodesValid_not_null, simp)
+     apply (drule one_mask_neg_MNOF_not_zero, auto)
     apply (drule nodesValid_not_null, simp)
+    apply (frule mask_sw32_eq_0_eq_x, solves simp)
+   apply (frule nodesValid_not_null, simp)
 proof -
   fix a::"mem_node_C ptr"
   fix s::globals
@@ -648,15 +854,16 @@ proof -
     apply (subst `?new_size = ?new_size_simplified`) by simp
   moreover have new_node_occupied: "?new_size_simplified && scast MEM_NODE_OCCUPIED_FLAG = scast MEM_NODE_OCCUPIED_FLAG"
     unfolding MEM_NODE_OCCUPIED_FLAG_def using word_ao_absorbs(5) by blast
-  moreover from invs and reachable and `a \<noteq> NULL` have "nodeValid s a" using invs_reachable_imp_valid by blast
+  moreover from invs and reachable and `a \<noteq> NULL` have "nodeValid s a" 
+      using nodesValid_reachable_imp_nodeValid by blast
   moreover have "(?new_size && scast MEM_NODE_OCCUPIED_FLAG = (0::32 word) \<longrightarrow> nodeFree ?new_s a)" 
     apply (simp add: `?new_size = ?new_size_simplified`)
     using MEM_NODE_OCCUPIED_FLAG_not_zero
     by (metis calculation(2) h_val_heap_update hrs_update(1) scast_0 scast_scast_id(2) size_C.size_C_def)
   moreover from `nodeValid s a` have "c_guard a \<and>
-       unat (ptr_val (a +\<^sub>p (1::int))) + unat ((?new_size && scast (~~MEM_NODE_OCCUPIED_FLAG)) * (8::32 word)) 
-        \<le> ( if ((node_next ?new_s a) \<noteq> NULL) then unat (ptr_val (node_next ?new_s a)) else 2 ^ len_of (TYPE(32))) 
-        \<and> unat (?new_size && scast (~~MEM_NODE_OCCUPIED_FLAG)) * (8::nat) < (2::nat) ^ len_of TYPE(32)" 
+       unat (ptr_val a) + 8 + unat ((?new_size && scast (~~MEM_NODE_OCCUPIED_FLAG)) * 8) 
+        \<le> ( if ((node_next ?new_s a) \<noteq> NULL) then unat (ptr_val (node_next ?new_s a)) else 2 ^ LENGTH(32)) 
+        \<and> unat (?new_size && scast (~~MEM_NODE_OCCUPIED_FLAG)) * 8 < 2 ^ LENGTH(32)" 
     unfolding nodeValid_def
     apply (subst `node_size s a && scast (~~ MEM_NODE_OCCUPIED_FLAG) =
         ?new_size  && scast (~~MEM_NODE_OCCUPIED_FLAG)`)
@@ -695,7 +902,8 @@ proof -
     hence "nodesValid ?new_s a" using `nodeValid ?new_s a` nodesValid_l3 by blast
     }
     ultimately have "nodesValid ?new_s a"  by blast 
-    moreover have hrs_the_same_before_a: "\<forall> p. p< ptr_val a \<longrightarrow> hrs_the_same_at s ?new_s p" sorry
+    moreover have hrs_the_same_before_a: "\<forall> p. p< ptr_val a \<longrightarrow> hrs_the_same_at s ?new_s p" 
+      sorry
     hence hrs_the_same_heap_to_a:"\<forall>p. p\<ge> ptr_val (ptr_coerce heap) \<and> p < ptr_val a \<longrightarrow> hrs_the_same_at s ?new_s p"
       by blast
   moreover have "\<forall> p \<in> set (path ?new_s (ptr_coerce heap) a). nodeValid ?new_s p" 
@@ -734,7 +942,8 @@ next
     "c_guard a"
     "a \<noteq> NULL"
     "c_guard ?new_next"
-  from nodesValid have "a \<ge> (ptr_coerce heap)" using `reachable s (ptr_coerce heap) a` sorry 
+  from nodesValid have "a \<ge> (ptr_coerce heap)" using `reachable s (ptr_coerce heap) a` 
+    sorry 
   have "(1::int) + uint (1 + (size_bytes >>3)) < 2 ^ LENGTH(32)" sorry     
   hence "uint (2 + (size_bytes >>3) ) =  1 + uint (1 + (size_bytes >>3))" by uint_arith
   hence "ptr_val a + of_int( (uint (2 + (size_bytes >>3) )) * xx) = 
@@ -744,7 +953,7 @@ next
       
   have "?new_next \<noteq> NULL" using `c_guard ?new_next` c_guard_NULL by auto
   have "nodeValid s a" using nodesValid `reachable s (ptr_coerce heap) a` `a \<noteq> NULL`
-    by (rule invs_reachable_imp_valid)
+    using nodesValid_reachable_imp_nodeValid by blast
   have size_mem_node_c[simp]:"size_of (TYPE(mem_node_C)) = 8" by simp 
   have new_s_simp[simp]: "?new_s_simp = ?new_s" by simp
   have new_size[simp]: "node_size ?new_s a= ?new_size " by (metis new_s_simp updated_node_size)
@@ -753,14 +962,14 @@ next
   hence "nodesValid ?new_s ?new_next" sorry
   have "unat ?node_size_masked * 8 < 2 ^ LENGTH(32)" 
     using `nodeValid s a` unfolding nodeValid_def by meson
-  have node_size_masked_l_2p32:"(unat ?node_size_masked) * unat (8::32 word) < (2::nat) ^ len_of (TYPE(32))" 
+  have node_size_masked_l_2p32:"(unat ?node_size_masked) * unat (8::32 word) < 2 ^ LENGTH(32)" 
     using `nodeValid s a` unfolding nodeValid_def apply(subst eight_eq_eight) by metis
   hence "((size_bytes >> 3) + 1) * 8 < ?node_size_masked * 8"
     using `(size_bytes >> 3) + 1  < ?node_size_masked`
     by (metis eight_eq_eight unat_0 word_gt_0_no word_mult_less_mono1 zero_neq_numeral)          
-  moreover have "unat (ptr_val (a+\<^sub>p1)) + unat (?node_size_masked * 8) \<le> (2::nat) ^ len_of (TYPE(32))"
-    using `nodeValid s a` nodeValid_node_size_l1 by fast 
-  ultimately have "unat (ptr_val (a+\<^sub>p1)) + unat ( ((size_bytes >>3) +1) * 8) < (2::nat) ^ len_of (TYPE(32))"
+  moreover have "unat (ptr_val a) + 8 + unat (?node_size_masked * 8) \<le> 2 ^ LENGTH(32)"
+    using `nodeValid s a` nodeValid_node_size_l1_new by fast 
+  ultimately have "unat (ptr_val a) + 8 + unat ( ((size_bytes >>3) +1) * 8) <  2 ^ LENGTH(32)"
     using `(size_bytes >>3) +1 < ?node_size_masked` `unat ?node_size_masked * 8 < 2 ^ LENGTH(32)`
     by unat_arith
   moreover have "unat (ptr_val (a+\<^sub>p1)) + unat ( ((size_bytes >>3) +1) * 8) = 
@@ -787,7 +996,7 @@ next
         using `?new_next = (a +\<^sub>p 1) +\<^sub>p uint ((size_bytes >>3)+ 1)` unfolding ptr_add_def
         by (metis (mono_tags, hide_lams) mem_node_C_size of_int_uint of_nat_numeral ptr_val.ptr_val_def) 
       hence "?new_next \<ge> (a +\<^sub>p 1)" by (simp add: ptr_le_def ptr_le_def') 
-      moreover have "(a +\<^sub>p 1) > a" sorry
+      moreover have "(a +\<^sub>p 1) > a" sorry (* false! *)
       ultimately have new_next_g_a:"?new_next > a \<and> ?new_next \<ge> (a +\<^sub>p 1)" using order_less_le_trans by auto 
     } note  new_next_g_a= this
   moreover{
@@ -795,20 +1004,29 @@ next
       unfolding MEM_NODE_OCCUPIED_FLAG_def sorry (* obvious *)
     hence new_size_eq:"?new_size_masked = (size_bytes >> 3) + 1"
       by (simp add: sable_isa.l11 sable_isa.mask_sw32_eq_0_eq_x)
-    have 1:"unat (ptr_val (a +\<^sub>p 1)) + unat (?node_size_masked * 8) 
+    have 1:"unat (ptr_val a) + 8 + unat (?node_size_masked * 8) 
       \<le> (if ?next \<noteq> NULL then unat (ptr_val ?next) else (2::nat) ^ LENGTH(32))" 
       using `nodeValid s a` unfolding nodeValid_def Let_def by simp
-    
+    hence "unat (ptr_val a) + 8 + unat (?node_size_masked * 8) 
+      \<le>  unat (ptr_val ?next)" sorry (* easy *)
     moreover have "unat (ptr_val ((a+\<^sub>p1) +\<^sub>p uint (1 + (size_bytes >> 3)))) =
            unat (ptr_val (a +\<^sub>p uint (2 + (size_bytes >> 3))))"
       by (simp add: \<open>a +\<^sub>p uint (2 + (size_bytes >> 3)) = a +\<^sub>p 1 +\<^sub>p uint ((size_bytes >> 3) + 1)\<close> add.commute) 
       (* \<up> duplicate fact? \<up> *)
-    ultimately have "unat (ptr_val (a +\<^sub>p 1)) + unat (?new_size_masked * 8)
-       \<le> (if ?new_next \<noteq> NULL then unat (ptr_val ?new_next) else (2::nat) ^ LENGTH(32))"
-      using  new_size_eq `?new_next = (a +\<^sub>p 1) +\<^sub>p uint ((size_bytes >>3)+ 1)`
-      `unat (ptr_val (a+\<^sub>p1)) + unat ( ((size_bytes >>3) +1) * 8) < (2::nat) ^ len_of (TYPE(32))`
-      \<open>unat (ptr_val (a +\<^sub>p 1)) + unat (((size_bytes >> 3) + 1) * 8) = unat (ptr_val (a +\<^sub>p 1 +\<^sub>p uint (1 + (size_bytes >> 3))))\<close> 
-      by auto       
+    
+    ultimately have "unat (ptr_val a) + 8 + unat (((size_bytes >> 3) + 1) * 8)
+                     \<le> unat (ptr_val ?new_next)"
+      using  (* `?new_next = (a +\<^sub>p 1) +\<^sub>p uint ((size_bytes >>3)+ 1)` *)
+        `(size_bytes >> 3) + 1  < ?node_size_masked`
+      `unat (ptr_val a) + 8 + unat (((size_bytes >> 3) + 1) * 8) < 2 ^ LENGTH(32)`
+      (* \<open>unat (ptr_val (a +\<^sub>p 1)) + unat (((size_bytes >> 3) + 1) * 8) = 
+       unat (ptr_val (a +\<^sub>p 1 +\<^sub>p uint (1 + (size_bytes >> 3))))\<close>  *)             
+      sorry
+    hence  "unat (ptr_val a) + 8 + unat (?new_size_masked * 8) \<le> unat (ptr_val ?new_next)"
+      using new_size_eq by argo
+    hence "unat (ptr_val a) + 8 + unat (?new_size_masked * 8)
+       \<le> (if ?new_next \<noteq> NULL then unat (ptr_val ?new_next) else 2 ^ LENGTH(32))"
+    sorry (* easy *)   
     moreover{ have "(unat ?node_size_masked) * 8 < 2 ^ LENGTH(32)" 
         using `nodeValid s a` unfolding nodeValid_def by meson  
       with `(size_bytes >> 3) + 1  < ?node_size_masked` 
@@ -824,8 +1042,8 @@ next
     ultimately have "nodeValid ?new_s a" using `c_guard a` unfolding nodeValid_def
       using new_next new_size by auto        
   }      
-  ultimately have "nodesValid ?new_s a" using nodesValid_trans_back new_next
-    using `nodesValid ?new_s ?new_next` by blast
+  ultimately have "nodesValid ?new_s a" using  new_next  `nodesValid ?new_s ?new_next` 
+    using nodesValid_trans_back by presburger
       (* have "unat (ptr_val (a +\<^sub>p 1)) + unat (?node_size_masked * 8) \<le> unat (ptr_val ?next)" 
     using `nodeValid s a` unfolding nodeValid_def  
     by (simp add: `?next \<noteq> NULL`) *)
@@ -854,16 +1072,17 @@ next
     ultimately have "hrs_the_same_at s ?new_s (ptr_val np)" using range_imp_hrs_the_same
       by simp    
         
-    have np_in_s_path:"np \<in> set (path s (ptr_coerce heap) a)" using np_in_path  paths_the_same by argo    
+    have np_in_s_path:"np \<in> set (path s (ptr_coerce heap) a)" using np_in_path paths_the_same by argo    
     hence "nodeValid s np" using `nodesValid s (ptr_coerce heap)` 
       node_in_path_nodesValid_imp_nodeValid_node by fast
     
     have "node_next s np \<le> a" using np_in_s_path  p_in_path_next_le_to by blast
     with `nodeValid s np` have "unat (ptr_val (np +\<^sub>p 1)) + unat((node_size_masked s np) * 8) \<le> 
     ( if (node_next s np \<noteq> NULL) then unat (ptr_val (node_next s np)) else 2 ^ LENGTH(32))"
-      unfolding nodeValid_def by metis
-    moreover have "node_next s np \<noteq> NULL"
-      by (metis (no_types) \<open>nodeValid s np\<close> Ptr_not_null_pointer_not_zero Ptr_ptr_coerce  c_guard_NULL nodeValid_def ptr_coerce_NULL reachable_def' reachable_trans word_not_simps(1))
+      unfolding nodeValid_def sorry (*  by metis *)
+    moreover have "node_next s np \<noteq> NULL" using `nodeValid s np`
+        sorry
+        (* by (metis (no_types) Ptr_not_null_pointer_not_zero Ptr_ptr_coerce  c_guard_NULL nodeValid_def ptr_coerce_NULL reachable.simps reachable_trans word_not_simps(1)) *)
       (* \<up> suspicious \<up> *)
     ultimately have "unat (ptr_val (np +\<^sub>p 1)) + unat((node_size_masked s np) * 8) \<le> 
       unat (ptr_val (node_next s np))" by auto
@@ -873,7 +1092,7 @@ next
       by unat_arith
     moreover have "unat (node_size_masked s np) * 8 < 2 ^ LENGTH(32)" using `nodeValid s np` 
       unfolding nodeValid_def by metis
-    ultimately have "\<forall>p \<in> {ptr_val (np +\<^sub>p 1)..+unat (node_size_masked s np) * size_of TYPE(mem_node_C)}. 
+    ultimately have "\<forall> p \<in> array_span (np +\<^sub>p 1) (unat (node_size_masked s np)). 
      p < ptr_val a"     
       unfolding intvl_def
       apply unat_arith  apply auto
@@ -885,7 +1104,7 @@ next
         apply (metis sable_isa.eight_eq_eight unat_of_nat_eq word_arith_nat_mult)
        apply (simp add: unat_of_nat_eq)
       by simp
-    hence "\<forall>p \<in> {ptr_val (np +\<^sub>p 1)..+unat (node_size_masked s np) * size_of TYPE(mem_node_C)} .
+    hence "\<forall>p \<in> array_span (np +\<^sub>p 1) (unat (node_size_masked s np)).
            hrs_the_same_at s ?new_s p" 
       by (simp add:`\<forall> p <ptr_val a. hrs_the_same_at s ?new_s_simp p`)  
     from `nodeValid s np` have "\<forall> p \<in> {ptr_val np ..+ size_of (TYPE(mem_node_C))}. p < ptr_val a"
@@ -924,6 +1143,7 @@ next
   }
   ultimately have "nodesValid ?new_s (ptr_coerce heap)" using
       `nodesValid ?new_s a` apply (simp only:`?new_s_simp = ?new_s`[THEN sym]) 
+    (* FIXME: error *)
     apply (rule nodesValid_l2) by blast+
   thus "nodesValid ?new_s (ptr_coerce heap)" by auto
 qed
@@ -1041,8 +1261,6 @@ proof -
     thus "c_null_guard (ptr_coerce (node +\<^sub>p 1):: 'a ptr)" unfolding c_null_guard_def by blast  
   qed
 qed
-
-
   
 lemma alloc'_hoare:
   fixes size_bytes :: "32 word"
@@ -1068,6 +1286,7 @@ lemma alloc'_hoare:
     apply (auto simp: `0 < size_bytes`)
                     apply wp
                     apply auto
+                      (* FIXME error *)
                       apply (rule self_reachable, solves simp)
                       apply (drule heap_invs_not_null, solves auto)
                       apply (rule self_reachable, solves auto)

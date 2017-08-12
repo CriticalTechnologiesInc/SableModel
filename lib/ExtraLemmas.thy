@@ -68,4 +68,9 @@ proof -
   thus "0 < n" using word_of_nat_less by force
 qed
 
+lemma ptr_less_simp : "a < b = (ptr_val a < ptr_val b)" 
+  by (simp add: ptr_less_def ptr_less_def')
+lemma ptr_le_simp : "a \<le> b = (ptr_val a \<le> ptr_val b)" 
+  by (simp add: ptr_le_def ptr_le_def')
+lemmas ptr_comp_simps = ptr_less_simp and ptr_le_simp 
 end
