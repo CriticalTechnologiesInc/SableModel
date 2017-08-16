@@ -7,7 +7,7 @@ begin
 record Session =
   nonceEven :: NONCE
   nonceOdd :: NONCE
-  continue :: bool
+  continueSession :: bool
 
 definition
   empty_Session :: "(TPM.AUTHHANDLE, Session) lookup"
