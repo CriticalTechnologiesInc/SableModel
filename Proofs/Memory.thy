@@ -63,11 +63,11 @@ where
 
 lemma hoare_liftC_wp[wp]:
   "\<lbrace>P\<rbrace> m \<lbrace>\<lambda>r s. \<forall>t. st s = t \<longrightarrow> Q r t\<rbrace> \<Longrightarrow> \<lbrace>liftC st P\<rbrace> exec_concrete st m \<lbrace>Q\<rbrace>"
-unfolding liftC_def
-apply wp
-unfolding valid_def
-apply auto
-done
+  unfolding liftC_def
+  apply (rule exec_concrete_wp)
+  unfolding valid_def
+  apply auto
+  done
 
 lemma hoare_liftC[intro]:
   "\<lbrace>P\<rbrace> m \<lbrace>\<lambda>r s. \<forall>t. st s = t \<longrightarrow> liftC st (Q r) t\<rbrace> \<Longrightarrow>
@@ -131,7 +131,7 @@ using heap_ptr_guard apply blast
 using heap_non_null and heap_aligned unfolding c_guard_def ptr_aligned_def c_null_guard_def
   is_aligned_def apply (simp add: align_of_array)
   using align_size_of[where 'a=mem_node_C] apply simp
-  using dvd.dual_order.trans apply blast
+  using Rings.comm_monoid_mult_class.dvd_trans apply blast
 proof -
   fix s :: globals and q :: "32 word"
   assume empty: "\<forall>p \<in> {symbol_table ''heap''..+8192}. snd (hrs_htd (t_hrs_' s) p) = Map.empty"
