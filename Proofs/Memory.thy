@@ -344,7 +344,7 @@ qed
 declare [[show_consts]]
 declare [[show_sorts]]*)
 
-lemma alloc_w32_safe: "\<lbrace>\<lambda>s. (liftC lift_global_heap heap_invs) s\<rbrace>
+(*lemma alloc_w32_safe: "\<lbrace>\<lambda>s. (liftC lift_global_heap heap_invs) s\<rbrace>
                        exec_concrete lift_global_heap (alloc' 4)
       \<lbrace>\<lambda>r s. ptr_val r \<noteq> 0 \<longrightarrow> is_valid_w32 s ((ptr_coerce r) :: (32 word) ptr)\<rbrace>!"
 apply (rule validNF)
@@ -362,7 +362,7 @@ proof -
   assume "\<forall>g. lift_global_heap s = lift_global_heap g \<longrightarrow> heap_invs g"
      and "\<forall>g. lift_global_heap b = lift_global_heap g \<longrightarrow> heap_invs g"
   hence "heap_invs s" and "heap_invs b" by auto
-oops
+oops*)
 
 end
 
