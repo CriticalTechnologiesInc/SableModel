@@ -1084,8 +1084,8 @@ proof -
       `reachable s ?heap_node a` `a \<noteq> NULL` 
     by blast
   have "reachable ?new_s ?heap_node a" 
-    using hrs_the_same_heap_to_a `reachable s ?heap_node a` `a \<noteq> NULL`      
-    sorry    
+    using hrs_the_same_heap_to_a `reachable s ?heap_node a` `a \<noteq> NULL` `nodesValid s ?heap_node` 
+    using hrs_the_sam_nodesValid_reachable_imp_reachable by blast
   from reachable have "a \<ge> ?heap_node" 
     using `a \<noteq> NULL`
     using reachable_helper2 by presburger
@@ -1182,13 +1182,6 @@ next
   from nodesValid have "a \<ge> (ptr_coerce heap)" 
     using `reachable s (ptr_coerce heap) a` `a \<noteq> NULL`
       reachable_helper2 by blast
-  have "1 + uint (1 + (size_bytes >>3)) < 2 ^ LENGTH(32)" sorry     
-  hence "uint (2 + (size_bytes >>3) ) =  1 + uint (1 + (size_bytes >>3))" by uint_arith
-  hence "ptr_val a + of_int( (uint (2 + (size_bytes >>3) )) * xx) = 
-         ptr_val a + of_int( (1 + uint ((size_bytes >>3) + 1)) * xx)" by simp 
-  hence "a +\<^sub>p uint ( 2 + (size_bytes >>3) ) = (a +\<^sub>p 1) +\<^sub>p uint ((size_bytes >>3)+ 1)" 
-    unfolding ptr_add_def by simp 
-      
   have "?new_next \<noteq> NULL" using `c_guard ?new_next` c_guard_NULL by auto
   have "nodeValid s a" using nodesValid `reachable s (ptr_coerce heap) a` `a \<noteq> NULL`
     using nodesValid_reachable_imp_nodeValid by blast 
@@ -1196,10 +1189,75 @@ next
   have new_size[simp]: "node_size ?new_s a= ?new_size " by (metis updated_node_size)
   have new_next[simp]: "node_next ?new_s a= ?new_next " by (metis updated_node_next)
       
-  have "\<forall>p \<ge> ptr_val ?new_next. hrs_the_same_at s ?new_s p" sorry    
   have "?next \<noteq> NULL \<longrightarrow> ?next > a" using `nodeValid s a` nodeValid_def by meson
-  have "?next = node_next ?new_s ?new_next"  sorry (* easy *)
-  have "?new_next_size = node_size_masked ?new_s ?new_next " sorry   (* easy *) 
+      
+      
+  have "\<forall>p \<in> ptr_span a. unat p < unat_ptr a + 8"
+    using intvl_upper_bound by auto
+      
+  have "((size_bytes >> 3) + 1) && scast OCC_FLG = 0"
+    apply(subgoal_tac "(size_bytes >> 3) + 1 && mask 31 = (size_bytes >> 3) + 1")
+     apply(subgoal_tac "scast OCC_FLG && ((mask 31)::32 word) = 0")
+      apply (metis (no_types, hide_lams) word_bw_comms(1) word_bw_lcs(1) word_log_esimps(1))  
+    unfolding MEM_NODE_OCCUPIED_FLAG_def 
+     apply (subgoal_tac "scast (0x80000000 :: 32 signed word) = (1<<31 ::32 word)")
+      apply (metis shiftl_mask_is_0)
+     apply simp
+    apply (subgoal_tac "(size_bytes >> 3) + 1 \<le> mask 31")
+     apply (simp add: and_mask_eq_iff_le_mask)
+    apply (subgoal_tac "(size_bytes >> 3) \<le> 0x1FFFFFFF")     
+    unfolding mask_def apply unat_arith
+    by (rule shiftr3_upper_bound)      
+      
+  hence new_size_eq:"?new_size_masked = (size_bytes >> 3) + 1"
+    by (simp add: sable_isa.l11 sable_isa.mask_sw32_eq_0_eq_x)
+  have "unat ?node_size_masked * 8 < 2 ^ LENGTH(32)" 
+    using `nodeValid s a` unfolding nodeValid_def by meson
+  have node_size_masked_l_2p32:"(unat ?node_size_masked) * unat (8::32 word) < 2 ^ LENGTH(32)" 
+    using `nodeValid s a` unfolding nodeValid_def apply(subst eight_eq_eight) by metis
+  hence "((size_bytes >> 3) + 1) * 8 < ?node_size_masked * 8"
+    using `(size_bytes >> 3) + 1  < ?node_size_masked`
+    by (metis eight_eq_eight unat_0 word_gt_0_no word_mult_less_mono1 zero_neq_numeral)          
+  moreover have "unat_ptr a + 8 + unat (?node_size_masked * 8) \<le> 2 ^ LENGTH(32)"
+    using `nodeValid s a` nodeValid_node_size_l1_new by fast 
+  ultimately have "unat_ptr a + 8 + unat ( ((size_bytes >>3) +1) * 8) <  2 ^ LENGTH(32)"
+    using `(size_bytes >>3) +1 < ?node_size_masked` `unat ?node_size_masked * 8 < 2 ^ LENGTH(32)`
+    by unat_arith
+      
+  have "unat_ptr a + 8 + unat (((size_bytes >> 3) + 1) * 8) =
+        unat (ptr_val a + 8 + ((size_bytes >> 3) + 1) * 8)"
+    apply(insert `unat_ptr a + 8 + unat (((size_bytes >> 3) + 1) * 8) < 2 ^ LENGTH(32)`) 
+    using  unat_add_lem_3
+    by (metis sable_isa.eight_eq_eight) 
+  hence "unat_ptr a + 8 + unat (?new_size_masked * 8) = unat_ptr (a +\<^sub>p uint (?new_size_masked + 1))"
+    apply (simp only: new_size_eq)
+    unfolding ptr_add_def apply (simp only: mem_node_C_size)
+    unfolding ptr_val_def apply (simp only: of_int_uint)
+    apply (subst (2) Rings.comm_semiring_class.distrib)
+    by auto 
+  hence "unat_ptr a + 8 + unat (((size_bytes >> 3) + 1) * 8) = unat_ptr ?new_next" 
+    using new_size_eq by auto    
+      
+  have "\<forall>p \<in> ptr_span ?new_next. unat p \<ge> unat_ptr ?new_next"
+    using `c_guard ?new_next` unfolding c_guard_def c_null_guard_def
+    apply clarify
+    apply (rule word_le_nat_alt[THEN iffD1])
+    using zero_not_in_intvl_lower_bound by blast
+  moreover have "\<forall>p \<in> ptr_span a. unat p < unat_ptr ?new_next"
+    apply (subst `unat_ptr a + 8 + unat (((size_bytes >> 3) + 1) * 8) = unat_ptr ?new_next`[THEN sym])
+    using `\<forall>p \<in> ptr_span a. unat p < unat_ptr a + 8`
+    by auto
+  ultimately have " ptr_span ?new_next \<inter> ptr_span a = {}" 
+    by fastforce
+  hence "node_val ?new_s ?new_next = mem_node_C ?new_next_size ?next" 
+    apply (auto simp add: h_val_heap_update hrs_mem_update)
+    apply (insert `ptr_span ?new_next \<inter> ptr_span a = {}`)
+    apply (drule_tac h="hrs_mem (t_hrs_' (update_node s ?new_next (mem_node_C ?new_next_size ?next)))"
+        in h_val_heap_update_disjoint)
+    by (auto simp add: h_val_heap_update hrs_mem_update)
+  hence "?next = node_next ?new_s ?new_next" by simp
+  have "?new_next_size = node_size_masked ?new_s ?new_next "
+    using `node_val ?new_s ?new_next = mem_node_C ?new_next_size ?next` by fastforce 
   have "unat ((size_bytes >> 3) + 1) * 8 < 2 ^ LENGTH(32)"
     apply (subgoal_tac "unat ?node_size_masked * 8 < 2 ^ LENGTH(32)")
     using `(size_bytes >> 3) + 1 < ?node_size_masked` 
@@ -1213,6 +1271,7 @@ next
   have "unat (?node_size_masked * 8) = unat ?node_size_masked * 8"
     using `unat ?node_size_masked * 8 < 2 ^ LENGTH(32)`
     by (metis  sable_isa.eight_eq_eight unat_of_nat_eq word_arith_nat_mult)   
+      
       
   {
     assume "?next \<noteq> NULL"
@@ -1229,8 +1288,7 @@ next
     have "unat ((size_bytes >> 3) + 1) * 8 = unat (((size_bytes >> 3) + 1) * 8)"
       using `unat ((size_bytes >> 3) + 1) * 8 < 2 ^ LENGTH(32)`
       by (metis sable_isa.eight_eq_eight unat_of_nat_eq word_arith_nat_mult)
-    have "unat_ptr a + 8 + unat (((size_bytes >> 3) + 1) * 8) = unat_ptr ?new_next" 
-      sorry (* proved later *)
+        
     have 2:"unat_ptr a + 8 + unat ((size_bytes >> 3) + 1) * 8 = unat_ptr ?new_next"
       apply (insert `unat_ptr a + 8 + unat (((size_bytes >> 3) + 1) * 8) = unat_ptr ?new_next`)
       by(subst `unat ((size_bytes >> 3) + 1) * 8 = unat (((size_bytes >> 3) + 1) * 8)`)
@@ -1239,7 +1297,12 @@ next
     have "unat ((size_bytes >> 3) + 1) * 8 + 8 \<le> unat ?node_size_masked * 8" by unat_arith
     hence "unat_ptr ?next \<ge> unat_ptr ?new_next + 8" 
       using 1 2 by unat_arith
-    hence "unat_ptr ?next > unat_ptr ?new_next" by arith
+  } note new_next_next_unat_rel = this
+  {assume "?next \<noteq> NULL"
+    hence "unat_ptr ?next \<ge> unat_ptr ?new_next + 8"
+      using new_next_next_unat_rel by simp
+    hence "unat_ptr ?next > unat_ptr ?new_next"
+      using new_next_next_unat_rel by arith
     hence "?next > ?new_next"
       apply (simp add:ptr_less_simp) 
       using unat_less_impl_less by blast
@@ -1251,6 +1314,41 @@ next
     have "?next > ?new_next \<and> ?next \<ge> ?new_next +\<^sub>p 1 "
       using `?next \<ge> ?new_next +\<^sub>p1` `?next > ?new_next` by presburger
   } note next_new_next_rel = this 
+  {
+    assume "?next \<noteq> NULL"
+    hence "?next > ?new_next \<and> ?next \<ge> ?new_next +\<^sub>p 1"
+      using next_new_next_rel by blast
+    let ?halfway_s = "(update_node s ?new_next (mem_node_C ?new_next_size ?next))"
+    let ?new_s = "(update_node ?halfway_s a (mem_node_C ?new_size ?new_next))"
+    have "unat_ptr ?next \<ge> unat_ptr a + size_of TYPE(mem_node_C)"
+      using `nodeValid s a` `?next \<noteq> NULL` unfolding nodeValid_def Let_def
+      by auto
+    have "\<forall>p \<in> ptr_span ?new_next. unat p < unat_ptr ?new_next + 8"
+      using intvl_upper_bound by auto
+    have "unat_ptr ?next \<ge> unat_ptr ?new_next + size_of TYPE(mem_node_C)"
+      using `?next \<noteq> NULL` new_next_next_unat_rel by fastforce
+    have "\<forall>p \<ge> ptr_val ?next. p \<notin> ptr_span ?new_next" 
+      using `unat_ptr ?next \<ge> unat_ptr ?new_next + size_of TYPE(mem_node_C)`
+      using `\<forall>p \<in> ptr_span ?new_next. unat p < unat_ptr ?new_next + 8`
+      apply auto
+      apply (subgoal_tac "unat p \<ge>unat_ptr ?new_next + 8")
+      by auto unat_arith    
+    hence 1:"\<forall>p \<ge> ptr_val ?next. hrs_the_same_at s ?halfway_s p"  
+      using updated_node_hrs_the_same_elsewhere_correct by blast        
+        
+    have "\<forall>p \<ge> ptr_val ?next. p \<notin> ptr_span a" 
+      using `unat_ptr ?next \<ge> unat_ptr a + size_of TYPE(mem_node_C)`
+      using `\<forall>p \<in> ptr_span a. unat p < unat_ptr a + 8`
+      apply auto
+      apply (subgoal_tac "unat p \<ge>unat_ptr a + 8")
+      by auto unat_arith      
+        
+    hence 2:"\<forall>p \<ge> ptr_val ?next. hrs_the_same_at ?halfway_s ?new_s p"
+      using updated_node_hrs_the_same_elsewhere_correct by blast
+        
+    have "(\<forall>p \<ge> ptr_val ?next. hrs_the_same_at s ?new_s p)"
+      using 1 2 by presburger
+  } hence "?next \<noteq> NULL \<longrightarrow> (\<forall>p \<ge> ptr_val ?next. hrs_the_same_at s ?new_s p)" by blast
   {
     have "( 2 + (size_bytes >> 3)) && scast OCC_FLG = 0"
       apply(subgoal_tac "2 + (size_bytes >> 3) && mask 31 = 2 + (size_bytes >> 3) ")
@@ -1368,13 +1466,21 @@ next
       using `?next = node_next ?new_s ?new_next` by presburger
         
     have "nodeFree s a" 
-      using `node_size s a && scast OCC_FLG = 0` `nodeValid s a` sorry (* easy *)
-        
-    have "unat (node_size_masked ?new_s ?new_next) * 8 < 2 ^ LENGTH(32)" sorry 
-        
+      using `node_size s a && scast OCC_FLG = 0` `nodeValid s a`
+      unfolding nodeValid_def by meson
+    have "?new_next_size = (?node_size_masked - (2 + (size_bytes >> 3)))"
+      using \<open>?node_size_masked - (2 + (size_bytes >> 3)) && scast (~~ OCC_FLG) =
+                 ?node_size_masked - (2 + (size_bytes >> 3))\<close> by blast 
+    have "?new_next_size < ?node_size_masked"
+      apply (subst `?new_next_size = (?node_size_masked - (2 + (size_bytes >> 3)))`)
+      using `?node_size_masked > (size_bytes >> 3) + 1`
+      by unat_arith
+    hence "unat (node_size_masked ?new_s ?new_next) * 8 < 2 ^ LENGTH(32)"  
+      apply (subst `?new_next_size =  (node_size_masked ?new_s ?new_next)`[THEN sym])
+      using `unat ?node_size_masked * 8 < 2 ^ LENGTH(32)`
+      by (simp add: nat_less_le word_less_nat_alt)
     have "nodeFree ?new_s ?new_next"
-      unfolding nodeFree_def Let_def
-      using `\<forall>p \<ge> ptr_val ?new_next. hrs_the_same_at s ?new_s p`        
+      unfolding nodeFree_def Let_def     
     proof-
       have "unat (ptr_val ( a +\<^sub>p 1)) + unat ?node_size_masked * 8 \<le> 2 ^ LENGTH(32)"
         using `nodeValid s a` nodeValid_node_size_l2 by fast
@@ -1385,7 +1491,7 @@ next
       have 1:"\<forall>p. p \<ge> ptr_val (a +\<^sub>p 1) \<and> unat p < unat_ptr (a +\<^sub>p 1) + unat ?node_size_masked * size_of TYPE(mem_node_C) \<longrightarrow>
                 snd (hrs_htd (t_hrs_' s) p) = Map.empty"
         by (simp add: sable_isa.intvl_no_overflow2) 
-        
+          
       {assume "unat_ptr ?new_next + 8 \<ge> 2 ^ LENGTH(32)"
           
         have "unat_ptr a + 8 + unat (((size_bytes >> 3) + 1) * 8) + 8 \<le> 2 ^ LENGTH(32)"
@@ -1394,9 +1500,6 @@ next
           apply (subst (asm) `unat (?node_size_masked * 8) = unat ?node_size_masked * 8`)  
           using `((size_bytes >> 3) + 1) < ?node_size_masked `
           by unat_arith
-            
-        have "unat_ptr a + 8 + unat (((size_bytes >> 3) + 1) * 8) = unat_ptr ?new_next" 
-          sorry (* proved later *)
         have "unat_ptr a + 8 + unat (((size_bytes >> 3) + 1) * 8) + 8 \<ge> 2 ^ LENGTH(32)"
           using `unat_ptr ?new_next + 8 \<ge> 2 ^ LENGTH(32)`
           apply (subst (asm)`unat_ptr a + 8 + unat (((size_bytes >> 3) + 1) * 8) = unat_ptr ?new_next`[THEN sym])
@@ -1441,9 +1544,8 @@ next
           using eight_eq_eight
           by (metis mult_numeral_1 numeral_One of_int_1 unat_of_nat_eq 
               word_arith_nat_add word_unat.Rep_inverse)
-        have "unat_ptr a + 8 + unat (((size_bytes >> 3) + 1) * 8) = unat_ptr ?new_next" 
-          sorry (* proved later *)
-        hence "?new_next > a"
+        have "?new_next > a"
+          using `unat_ptr a + 8 + unat (((size_bytes >> 3) + 1) * 8) = unat_ptr ?new_next`
           apply (simp add:ptr_less_simp) by unat_arith
             
             
@@ -1465,9 +1567,6 @@ next
         hence "unat_ptr (a +\<^sub>p 1) = unat_ptr a + 8" 
           unfolding ptr_add_def by unat_arith
             
-        have "?new_next_size = (?node_size_masked - (2 + (size_bytes >> 3)))"
-          using \<open>?node_size_masked - (2 + (size_bytes >> 3)) && scast (~~ OCC_FLG) =
-                 ?node_size_masked - (2 + (size_bytes >> 3))\<close> by blast 
         have "unat ?node_size_masked \<ge> unat (2 + (size_bytes >> 3))" 
           using \<open>2 + (size_bytes >> 3) \<le> ?node_size_masked\<close> word_le_nat_alt by blast  
         hence "unat (?node_size_masked - (2 + (size_bytes >> 3))) = 
@@ -1491,9 +1590,6 @@ next
           apply (subst `unat (((size_bytes >> 3) + 1) * 8) = unat ((size_bytes >> 3) + 1) * 8`) 
           by auto 
             
-            (*            hence "node_next ?new_s ?new_next\<ge> ?new_next +\<^sub>p 1" using `?next = node_next ?new_s ?new_next`     
-            sorry 
-               *)
         have "unat_ptr (?new_next +\<^sub>p 1) + unat ?new_next_size * size_of TYPE(mem_node_C)
                = unat_ptr (a +\<^sub>p 1) + unat ?node_size_masked * size_of TYPE(mem_node_C)" 
           apply (subst `unat_ptr (?new_next +\<^sub>p 1) = unat_ptr ?new_next + 8`)
@@ -1554,11 +1650,10 @@ next
   {
     assume "?next \<noteq> NULL"
     hence "?next > a" using `?next \<noteq> NULL \<longrightarrow> ?next > a` by fast
-        
     hence "\<forall>p \<ge> ptr_val ?next. hrs_the_same_at s ?new_s p"
-      using `?next \<noteq> NULL`[THEN next_new_next_rel, THEN conjunct1]
-      using `\<forall>p \<ge> ptr_val ?new_next. hrs_the_same_at s ?new_s p`
-      by (meson order_less_le_trans ptr_less_def ptr_less_def' word_le_less_eq)
+      using `?next \<noteq> NULL`
+      using `?next \<noteq> NULL \<longrightarrow> (\<forall>p \<ge> ptr_val ?next. hrs_the_same_at s ?new_s p)`
+      by fast
     have "reachable s ?heap_node ?next"
       using `reachable s ?heap_node a` `a \<noteq> NULL` nodesValid 
         nodesValid_reachable_imp_next_reachable by blast 
@@ -1584,50 +1679,6 @@ next
         nodesValid_def' by metis
   }
   ultimately have "nodesValid ?new_s ?new_next" by satx
-      
-  have "unat ?node_size_masked * 8 < 2 ^ LENGTH(32)" 
-    using `nodeValid s a` unfolding nodeValid_def by meson
-  have node_size_masked_l_2p32:"(unat ?node_size_masked) * unat (8::32 word) < 2 ^ LENGTH(32)" 
-    using `nodeValid s a` unfolding nodeValid_def apply(subst eight_eq_eight) by metis
-  hence "((size_bytes >> 3) + 1) * 8 < ?node_size_masked * 8"
-    using `(size_bytes >> 3) + 1  < ?node_size_masked`
-    by (metis eight_eq_eight unat_0 word_gt_0_no word_mult_less_mono1 zero_neq_numeral)          
-  moreover have "unat_ptr a + 8 + unat (?node_size_masked * 8) \<le> 2 ^ LENGTH(32)"
-    using `nodeValid s a` nodeValid_node_size_l1_new by fast 
-  ultimately have "unat_ptr a + 8 + unat ( ((size_bytes >>3) +1) * 8) <  2 ^ LENGTH(32)"
-    using `(size_bytes >>3) +1 < ?node_size_masked` `unat ?node_size_masked * 8 < 2 ^ LENGTH(32)`
-    by unat_arith
-
-  have "((size_bytes >> 3) + 1) && scast OCC_FLG = 0"
-    apply(subgoal_tac "(size_bytes >> 3) + 1 && mask 31 = (size_bytes >> 3) + 1")
-    apply(subgoal_tac "scast OCC_FLG && ((mask 31)::32 word) = 0")
-    apply (metis (no_types, hide_lams) word_bw_comms(1) word_bw_lcs(1) word_log_esimps(1))  
-    unfolding MEM_NODE_OCCUPIED_FLAG_def 
-    apply (subgoal_tac "scast (0x80000000 :: 32 signed word) = (1<<31 ::32 word)")
-    apply (metis shiftl_mask_is_0)
-    apply simp
-    apply (subgoal_tac "(size_bytes >> 3) + 1 \<le> mask 31")
-    apply (simp add: and_mask_eq_iff_le_mask)
-    apply (subgoal_tac "(size_bytes >> 3) \<le> 0x1FFFFFFF")     
-    unfolding mask_def apply unat_arith
-    by (rule shiftr3_upper_bound)      
-      
-  hence new_size_eq:"?new_size_masked = (size_bytes >> 3) + 1"
-    by (simp add: sable_isa.l11 sable_isa.mask_sw32_eq_0_eq_x)
-      
-  have "unat_ptr a + 8 + unat (((size_bytes >> 3) + 1) * 8) =
-        unat (ptr_val a + 8 + ((size_bytes >> 3) + 1) * 8)"
-    apply(insert `unat_ptr a + 8 + unat (((size_bytes >> 3) + 1) * 8) < 2 ^ LENGTH(32)`) 
-    using  unat_add_lem_3
-    by (metis sable_isa.eight_eq_eight) 
-  hence "unat_ptr a + 8 + unat (?new_size_masked * 8) = unat_ptr (a +\<^sub>p uint (?new_size_masked + 1))"
-    apply (simp only: new_size_eq)
-    unfolding ptr_add_def apply (simp only: mem_node_C_size)
-    unfolding ptr_val_def apply (simp only: of_int_uint)
-    apply (subst (2) Rings.comm_semiring_class.distrib)
-    by auto 
-  hence "unat_ptr a + 8 + unat (((size_bytes >> 3) + 1) * 8) = unat_ptr ?new_next" 
-    using new_size_eq by auto    
   {      
     from `unat_ptr a + 8 + unat (((size_bytes >> 3) + 1) * 8) = unat_ptr ?new_next`
     have "unat_ptr ?new_next \<ge> unat_ptr a + 8"
@@ -1721,10 +1772,8 @@ next
     apply (rule path_nodeValid_reachable_imp_nodesValid)
     by blast+
   thus "nodesValid ?new_s_real (ptr_coerce heap)" by auto
-qed
+qed  
 
-
-  
 lemma alloc'_hoare_helper:
   fixes size_bytes heap
   assumes n:"size_of TYPE('a) \<le> unat size_bytes"
