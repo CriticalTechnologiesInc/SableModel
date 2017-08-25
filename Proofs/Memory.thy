@@ -1904,55 +1904,40 @@ lemma alloc'_hoare:
                   \<and> size_C (h_val (hrs_mem (t_hrs_' s)) n) && scast OCC_FLG = 0)" 
         and M="\<lambda> ((n,y),s). ptr_val n"])
   apply (wp fail'_wp)
-  apply (simp add: `0 < size_bytes` h_val_id not_le)
-  defer defer
-  apply (wp fail'_wp)
-  prefer 2
-  apply (erule iffD1[OF refl])
-  apply (auto simp: `0 < size_bytes`)
-  apply wp
-  apply auto
-    (* FIXME error *)
-  apply (rule self_reachable, solves simp)
-  apply (drule heap_invs_not_null, solves auto)
-  apply (rule self_reachable, solves auto)
-  apply (drule one_mask_neg_MNOF_not_zero, solves simp)
-  apply (drule heap_invs_not_null, solves auto)
-  apply (rule self_reachable, solves auto)
-  apply (drule mask_sw32_eq_0_eq_x, solves auto)
-  apply (drule heap_invs_not_null, solves auto)
+      apply (simp add: `0 < size_bytes` h_val_id not_le)
+      defer defer
+      apply (wp fail'_wp)
+     prefer 2
+     apply (erule iffD1[OF refl])
+    apply (auto simp: `0 < size_bytes`)
+                    apply wp
+                    apply auto
   unfolding heap_invs_def
-    (* FIXME: use this: *)
-  apply(drule nodesValid_reachable_imp_next_reachable, auto)+
-    (*instead of this: apply (drule reachable_trans,solves auto, solves auto)+ *)
+                     apply (drule one_mask_neg_MNOF_not_zero, solves simp)
+                    apply (drule mask_sw32_eq_0_eq_x, solves auto)
+                   apply(drule nodesValid_reachable_imp_next_reachable, auto)
+                  apply(drule nodesValid_reachable_imp_next_reachable, auto)
+                 apply(drule nodesValid_reachable_imp_next_reachable, auto)
+                apply (drule one_mask_neg_MNOF_not_zero, solves simp)
+               apply(drule nodesValid_reachable_imp_next_reachable, auto)
+              apply(drule nodesValid_reachable_imp_next_reachable, auto)
+             apply (drule mask_sw32_eq_0_eq_x, solves auto)
+            apply(drule nodesValid_reachable_imp_next_reachable, auto)
+           apply(drule nodesValid_reachable_imp_next_reachable, auto)
+          apply(drule nodesValid_reachable_imp_next_reachable, auto)
+         apply(drule nodesValid_reachable_imp_next_reachable, auto)
   apply (drule one_mask_neg_MNOF_not_zero, solves simp)
+  apply(drule nodesValid_reachable_imp_next_reachable, auto)
+  apply(drule nodesValid_reachable_imp_next_reachable, auto)    
+  apply (subst mask_sw32_eq_0_eq_x,  auto)
+  apply(drule nodesValid_reachable_imp_next_reachable, auto)
     
-  apply (drule reachable_trans,solves auto, solves auto)
-  apply (drule c_guard_NULL,rule reachable_trans, solves simp, solves simp)
-  apply (drule mask_sw32_eq_0_eq_x, solves auto)
-  apply (drule c_guard_NULL,drule reachable_trans, solves simp, solves simp)+
-  apply (drule one_mask_neg_MNOF_not_zero, solves simp)
-  apply (drule c_guard_NULL,drule reachable_trans, solves simp, solves simp)+
-  apply (drule mask_sw32_eq_0_eq_x, solves auto)
-  apply (drule c_guard_NULL,drule reachable_trans, solves simp, solves simp)
-  using n align apply (rule alloc'_hoare_helper, auto)
-  using n align apply (rule alloc'_hoare_helper, auto) 
+  using n align apply (rule alloc'_hoare_helper, unfold heap_invs_def, auto)
+  using n align apply (rule alloc'_hoare_helper, unfold heap_invs_def, auto) 
   done
     
-    
-text \<open> hello! @{thm (lhs) simple_lift_def}  \<close>   
   
-thm "valid_simple_footprint_def"
-thm "heap_ptr_valid_def"
-thm "simple_lift_def"
-typ "globals"
-print_record "lifted_globals"
-value " (s :: globals)"
-  (*declare [[show_types]]
-declare [[show_consts]]
-declare [[show_sorts]]*)
-  
-lemma alloc_w32_safe: "\<lbrace>\<lambda>s. (liftC lift_global_heap (\<lambda>s. heap_invs s heap)) s\<rbrace>
+(* lemma alloc_w32_safe: "\<lbrace>\<lambda>s. (liftC lift_global_heap (\<lambda>s. heap_invs s heap)) s\<rbrace>
                        exec_concrete lift_global_heap (alloc' heap 4)
       \<lbrace>\<lambda>r s. ptr_val r \<noteq> 0 \<longrightarrow> is_valid_w32 s ((ptr_coerce r) :: (32 word) ptr)\<rbrace>!"
   apply (rule validNF)
@@ -1970,7 +1955,7 @@ proof -
   assume "\<forall>g. lift_global_heap s = lift_global_heap g \<longrightarrow> heap_invs g"
     and "\<forall>g. lift_global_heap b = lift_global_heap g \<longrightarrow> heap_invs g"
   hence "heap_invs s" and "heap_invs b" by auto
-  oops
+  oops *)
     
 end
   
