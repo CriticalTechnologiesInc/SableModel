@@ -80,11 +80,7 @@ definition nodeValid :: "globals \<Rightarrow> mem_node_C ptr \<Rightarrow> bool
    unat size * 8 < 2 ^ LENGTH(32) \<and>
    (occupied = 0 \<longrightarrow> nodeFree s node) \<and> 
    (next \<noteq> NULL \<longrightarrow> next > node \<and> next \<ge> (node +\<^sub>p 1)) )"
-    
-(* lemma "c_null_guard p \<Longrightarrow> 
-  x \<in> ptr_span (p::mem_node_C ptr) \<Longrightarrow>
-  unat x < unat_ptr p + size_of (TYPE(mem_node_C))" sorry 
- *)    
+       
 lemma nodeValid_node_size_l1_new:
   "nodeValid s node \<Longrightarrow>  unat_ptr node + 8 + unat ((node_size_masked s node) * 8) \<le> 
     2 ^ LENGTH(32)"
@@ -144,28 +140,12 @@ termination
   apply (clarsimp simp:ptr_less_simp ptr_le_simp)
   by unat_arith auto
     
-    (* FIXME : remove if safe*)    
-    (* declare nodesValid.simps[simp del]   *)
-    
 lemma nodesValid_def' :"nodesValid s heap =
   (let next = (node_next s heap) in 
     nodeValid s heap \<and> (next \<noteq> NULL \<longrightarrow> nodesValid s next))"
   unfolding Let_def
   using nodesValid.simps
   by blast
-    
-thm nodesValid.induct    
-lemma nodesValid_induct' :
-  "(\<And>s heap.
-    (node_next s heap \<noteq> NULL \<Longrightarrow>
-     P s (node_next s heap)) \<Longrightarrow>
-    P s heap) \<Longrightarrow>
-  P s node"    
-  sorry
-    
-thm nodesValid.induct
-thm nodesValid.simps
-thm nodesValid_def'
   
 definition heap_invs :: "globals \<Rightarrow> unit ptr \<Rightarrow> bool"
   where
@@ -200,12 +180,7 @@ termination
   apply (relation "measure (\<lambda> (s,node,to).2 ^ 32 + unat_ptr to - unat_ptr node)")
    apply (auto simp: ptr_less_simp ptr_le_simp)
   by unat_arith auto
-    
-thm reachable.induct        
-thm reachable.simps
-  
-  (* declare reachable.simps[simp del] *)
-  
+      
 lemma self_reachable: "n \<noteq> NULL \<Longrightarrow> reachable s n n"
   by auto
     
@@ -227,8 +202,7 @@ lemma reachable_next_le_to[rule_format]:
   "reachable s node to \<longrightarrow> node \<noteq> to \<longrightarrow> to \<noteq> NULL \<longrightarrow> node_next s node \<le> to  "
   apply (rule_tac ?a0.0=s and ?a1.0=node and ?a2.0=to in reachable.induct)
       apply auto
-  using reachable_helper2 by blast
-    
+  using reachable_helper2 by blast 
     
 lemma reachable_trans[rule_format]:
   "reachable s node to \<longrightarrow> to \<noteq> NULL \<longrightarrow> node_next s to > to \<longrightarrow> 
@@ -249,28 +223,38 @@ lemma reachable_trans2[rule_format]:
    reachable s node (node_next s to)"
   apply (rule_tac ?a0.0=s and ?a1.0=node and ?a2.0=to in  reachable.induct)
   by auto
+  
+lemma intvl_no_overflow_lower_bound:
+  "(a :: ('a::{len}) word) \<in> {x ..+  sz} \<Longrightarrow> unat x + sz \<le> 2 ^ LENGTH('a) \<Longrightarrow> a \<ge> x"
+  apply unat_arith unfolding intvl_def  apply unat_arith
+  apply auto 
+  apply (subgoal_tac "unat (of_nat k) = k")
+   apply (smt add.commute add_leD1 add_less_mono1 order_less_le_trans unat_of_nat unat_of_nat_eq word_nchotomy)
+  by (smt add.commute add.left_neutral add_diff_cancel_right' add_leD1 add_lessD1 diff_add_inverse 
+      diff_diff_cancel diff_le_self le_Suc_ex less_diff_conv less_irrefl_nat less_or_eq_imp_le 
+      linorder_not_less nat_add_left_cancel_less nat_less_le not_add_less1 order_less_le_trans unat_of_nat_eq)
     
-lemma updated_node_hrs_the_same_elsewhere_correct:
+lemma intvl_upper_bound: "a \<in> {x ..+ sz} \<Longrightarrow> 
+  unat a < unat x + sz"
+  unfolding intvl_def
+  apply unat_arith
+  apply (auto simp add: unat_of_nat) 
+  using mod_less by blast
+    
+lemma zero_not_in_intvl_lower_bound:
+  "(a::('a::len) word) \<in> {x ..+ sz} \<Longrightarrow> 0 \<notin> {x ..+  sz}  \<Longrightarrow> a \<ge>  x "
+  apply (drule zero_not_in_intvl_no_overflow)
+  by (rule intvl_no_overflow_lower_bound)
+      
+lemma updated_node_hrs_the_same_elsewhere:
   assumes x_val:"x \<notin> ptr_span p"
-  shows"hrs_the_same_at s (update_node s p new_node) x" 
-  sorry
-    
-lemma updated_node_hrs_the_same_elsewhere_incorrect :
-  assumes x_val:"x \<ge> ptr_val (p +\<^sub>p 1) \<or> x < ptr_val p"
-  shows"hrs_the_same_at s (update_node s p new_node) x" 
+  shows"hrs_the_same_at s (update_node s p new_node) x"
 proof-
   let ?xptr = "(Ptr x)::8 word ptr"
   have x[simp] : "ptr_val ?xptr = x" by simp
-  hence "ptr_val ?xptr \<ge> ptr_val (p +\<^sub>p 1) \<or> ptr_val ?xptr < ptr_val p" sorry
-  {assume "ptr_val ?xptr \<ge> ptr_val (p +\<^sub>p 1)"
-    hence "ptr_span p \<inter> {ptr_val ?xptr..+size_of TYPE(8 word)} = {}" 
-      unfolding intvl_def apply simp unfolding ptr_add_def apply simp  sorry
-  }
-  {assume "ptr_val ?xptr < ptr_val p"
-    hence "ptr_span p \<inter> {ptr_val ?xptr..+size_of TYPE(8 word)} = {}" 
-      unfolding intvl_def apply simp unfolding ptr_add_def   sorry
-  }
-  hence "ptr_span p \<inter> {ptr_val ?xptr..+size_of TYPE(8 word)} = {}" sorry (* oops *)
+  hence "ptr_span p \<inter> {ptr_val ?xptr..+size_of TYPE(8 word)} = {}"
+    apply simp 
+      using intvl_Suc x_val by auto
   hence "\<forall> h. h_val (heap_update p new_node h) ?xptr = h_val h ?xptr" 
     using h_val_update_regions_disjoint by blast
   hence "\<forall> h. (heap_update p new_node h)  x =  h x" 
@@ -283,23 +267,28 @@ proof-
     apply(simp split:prod.split)
     done
 qed
-thm t_hrs_'_update_def
-thm t_hrs_'_def
-  
-(* lemma updated_node_blahblah:
-  "x \<ge> ptr_val (p+\<^sub>p 1) \<and> x \<ge> ptr_val (q +\<^sub>p 1) \<Longrightarrow> 
-    hrs_the_same_at s (update_node (update_node s p new_node_1) q new_node_2 ) x"
-  (* FIXME error *)
-  using updated_node_hrs_the_same_elsewhere
-  by presburger
-     *)
-lemma updated_node_blahblah_2:
-  "x < ptr_val p \<and> x < ptr_val q \<Longrightarrow> 
-    hrs_the_same_at s (update_node (update_node s p new_node_1) q new_node_2 ) x"
-  (* FIXME error *)
-  using updated_node_hrs_the_same_elsewhere_correct
-  by presburger  
     
+lemma dobule_update_heaps_eq_before:
+  assumes "x < ptr_val p" and "x < ptr_val q"
+    and "c_null_guard p" and "c_null_guard q"
+  shows "hrs_the_same_at s (update_node (update_node s p new_node_1) q new_node_2 ) x"
+proof-
+  let ?halfway_s = "update_node s p new_node_1"
+  let ?new_s = "update_node ?halfway_s q new_node_2"
+  have "x \<notin> ptr_span p" using `x< ptr_val p` `c_null_guard p`
+    unfolding c_null_guard_def
+    using zero_not_in_intvl_lower_bound by fastforce
+  hence "hrs_the_same_at s ?halfway_s x"
+    using updated_node_hrs_the_same_elsewhere by blast
+  have "x \<notin> ptr_span q" using `x< ptr_val q` `c_null_guard q`
+    unfolding c_null_guard_def
+    using zero_not_in_intvl_lower_bound by fastforce   
+  hence "hrs_the_same_at ?halfway_s ?new_s x"
+    using updated_node_hrs_the_same_elsewhere by blast
+  thus "hrs_the_same_at s ?new_s x"  
+    using `hrs_the_same_at s ?halfway_s x`
+    by simp
+qed
     
 function path :: "globals \<Rightarrow> mem_node_C ptr \<Rightarrow> mem_node_C ptr \<Rightarrow> mem_node_C ptr list"
   where "node = NULL \<or> node \<ge> node_next s node \<or> node_next s node > to \<Longrightarrow>
@@ -361,10 +350,6 @@ lemma p_in_path_l_next[rule_format]:
 lemma split_goal:"(P \<longrightarrow> Q) \<Longrightarrow> (\<not>P \<longrightarrow> Q) \<Longrightarrow> Q" 
   by auto
     
-thm path.induct
-thm reachable.elims
-thm path.simps
-    
 lemma nodeValid_edge_of_addr_space:
   assumes "nodeValid s node"
   shows "(node +\<^sub>p 1) > node \<or> (node_size_masked s node) = 0"
@@ -390,27 +375,6 @@ proof -
   } thus ?thesis by fast
 qed
   
-lemma intvl_no_overflow_lower_bound:
-  "(a :: ('a::{len}) word) \<in> {x ..+  sz} \<Longrightarrow> unat x + sz \<le> 2 ^ LENGTH('a) \<Longrightarrow> a \<ge> x"
-  apply unat_arith unfolding intvl_def  apply unat_arith
-  apply auto 
-  apply (subgoal_tac "unat (of_nat k) = k")
-   apply (smt add.commute add_leD1 add_less_mono1 order_less_le_trans unat_of_nat unat_of_nat_eq word_nchotomy)
-  by (smt add.commute add.left_neutral add_diff_cancel_right' add_leD1 add_lessD1 diff_add_inverse diff_diff_cancel diff_le_self le_Suc_ex less_diff_conv less_irrefl_nat less_or_eq_imp_le linorder_not_less nat_add_left_cancel_less nat_less_le not_add_less1 order_less_le_trans unat_of_nat_eq)
-    
-lemma intvl_upper_bound: "a \<in> {x ..+ sz} \<Longrightarrow> 
-  unat a < unat x + sz"
-  unfolding intvl_def
-  apply unat_arith
-  apply (auto simp add: unat_of_nat) 
-  using mod_less by blast
-    
-    (* thm zero_not_in_intvl_no_overflow[THEN intvl_no_overflow_lower_bound] *)
-lemma zero_not_in_intvl_lower_bound:
-  "(a::('a::len) word) \<in> {x ..+ sz} \<Longrightarrow> 0 \<notin> {x ..+  sz}  \<Longrightarrow> a \<ge>  x "
-  apply (drule zero_not_in_intvl_no_overflow)
-  by (rule intvl_no_overflow_lower_bound)
-    
 lemma hrs_the_same_imp_nodeValid:
   "\<forall> p \<in> ptr_span node. hrs_the_same_at s s' p \<Longrightarrow>
    \<forall> p \<in> array_span (node +\<^sub>p 1) (unat (node_size_masked s node)). hrs_the_same_at s s' p \<Longrightarrow>   
@@ -480,45 +444,44 @@ lemma nodesValid_trans_back: "nodeValid s node \<Longrightarrow>
     nodesValid s (node_next s node) \<Longrightarrow>
     nodesValid s node"
   by(subst nodesValid_def', simp)
-    
-thm nodesValid.induct[simplified]
+
 lemma nodesValid_reachable_imp_nodesValid: 
   "reachable s fst_node node \<Longrightarrow>
    nodesValid s fst_node \<Longrightarrow>  
    node \<noteq> NULL \<Longrightarrow> 
    nodesValid s node"
-proof (induction fst_node rule:nodesValid_induct')
+  apply (induction fst_node rule:nodesValid.induct)
+    apply auto
+   apply (metis sable_isa.nodesValid_def' sable_isa.reachable_helper3)
+proof-
   fix s heap
-  assume ih: "( next_C (h_val (hrs_mem (t_hrs_' s)) heap) \<noteq> NULL \<Longrightarrow>            
-             reachable s (next_C (h_val (hrs_mem (t_hrs_' s)) heap)) node \<Longrightarrow>
-             nodesValid s (next_C (h_val (hrs_mem (t_hrs_' s)) heap)) \<Longrightarrow>
-             node \<noteq> NULL \<Longrightarrow> nodesValid s node)"
-    and "nodesValid s heap"
+  assume ih:"(reachable s (node_next s heap) node \<Longrightarrow> nodesValid s node)"
     and "reachable s heap node"
+    and "nodesValid s (node_next s heap)"
     and "node \<noteq> NULL"
-  let ?heap_next = "node_next s heap"
+    and "nodeValid s heap"
+    and "(node_next s heap) \<noteq> NULL"
   {
     assume "node = heap"
-    hence "nodesValid s node" using `nodesValid s heap` by auto
+    have "nodesValid s heap" 
+      using `nodesValid s (node_next s heap)` `nodeValid s heap`
+      using nodesValid_trans_back by blast
+    hence "nodesValid s node" using `node = heap` by auto
   }
   moreover {
     assume "node \<noteq> heap"
-    {assume "?heap_next = NULL"
-      hence "node = NULL" using `node \<noteq> heap` `nodesValid s heap` `reachable s heap node` 
-        using sable_isa.reachable_helper3 by blast 
-      with `node \<noteq> NULL` have False by auto
-    } hence "?heap_next \<noteq> NULL" by auto
-    moreover from `nodesValid s heap` `?heap_next \<noteq> NULL` have "nodesValid s ?heap_next" 
-      by (meson sable_isa.nodesValid_def')  
-    moreover from `reachable s heap node` `node \<noteq> NULL` `?heap_next \<noteq> NULL` `node \<noteq> heap`
-    have "reachable s ?heap_next node"  
-      using reachable.elims(2) by blast
-    ultimately have "nodesValid s node"
-      using `node \<noteq> NULL` ih  by blast   
+    have "heap \<noteq> NULL" using `nodeValid s heap` unfolding nodeValid_def Let_def
+      using c_guard_NULL by blast
+    have "node_next s heap > heap" using `nodeValid s heap` `(node_next s heap) \<noteq> NULL`
+      unfolding nodeValid_def by meson
+    with `reachable s heap node` `heap \<noteq> NULL` `(node_next s heap) \<noteq> NULL`  `node \<noteq> heap` 
+    have "reachable s (node_next s heap) node"  
+      using reachable.simps(4) by metis
+    hence "nodesValid s node"
+      using `node \<noteq> NULL` ih by blast   
   }
   ultimately show "nodesValid s node" by auto 
 qed
-
 
 lemma nodesValid_reachable_imp_next_reachable: 
   "reachable s fst_node node \<Longrightarrow>
@@ -576,7 +539,7 @@ lemma heaps_eq_nodesValid_reachable_imp_paths_eq_reachable[rule_format]:
     apply clarify
       apply (frule reachable_next_le_to)
       apply auto[3]
-    apply (metis (full_types) less_irrefl less_le_trans sable_isa.reachable.simps(2) sable_isa.reachable_next_le_to)
+    apply (metis (full_types) less_irrefl less_le_trans reachable.simps(2) reachable_next_le_to)
 proof clarify    
   fix s node to
   assume ih:
@@ -679,26 +642,50 @@ lemma heaps_eq_nodesValid_reachable_imp_reachable:
     
 thm word_mult_le_mono1
   
-lemma l10: "unat x + unat y < 2 ^ 32 \<Longrightarrow>y \<noteq> 0 \<Longrightarrow> 
-            ((x:: word32) div ( y :: word32)) * y + y \<ge> x"
+lemma l10: 
+  assumes "unat x + unat y < 2 ^ 32"
+    and "y \<noteq> 0"   
+  shows "((x:: word32) div ( y :: word32)) * y + y \<ge> x"
+proof -
+  have "unat ((x div y) * y) = unat (x div y) * unat y"
+    apply unat_arith
+    apply auto
+    by (metis (no_types, hide_lams) Word_Miscellaneous.dtle le_unat_uoi unat_div word_arith_nat_mult)
+  have "unat ((x div y) * y) = (unat x div unat y) * unat y"
+    apply unat_arith
+    apply auto
+    by (simp add: \<open>unat (x div y * y) = unat (x div y) * unat y\<close> unat_div)
+  have "unat x div unat y * unat y + unat x mod unat y = unat x"
+    by simp
+  show ?thesis
+    using `unat x + unat y < 2 ^ 32` `y \<noteq> 0` 
+      `unat ((x div y) * y) = (unat x div unat y) * unat y`
   apply unat_arith
-  apply auto
-   apply (subgoal_tac "unat ((x div y) * y) = (unat x div unat y) * unat y")
-    apply (subgoal_tac "unat x div unat y * unat y + unat x mod unat y = unat x")
+  apply auto  
    apply unat_arith
      apply auto
     apply (subgoal_tac "unat x div unat y * unat y + unat x mod unat y = unat x")
      apply (metis mod_le_divisor nat_add_left_cancel_le)
-    apply simp
+     apply simp
+    using `unat x div unat y * unat y + unat x mod unat y = unat x`
+      by arith
+qed
+
+lemma scast_NOT_simp: "(scast (~~(flag :: 32 signed word)) :: word32) = ~~ ((scast flag)::word32)"
+  unfolding word_not_def
+  apply (subst scast_down_wi)
+   defer
+   apply (subst uint_scast)
+   apply (rule refl)
+  apply (subst is_down)
+  by simp  
     
-    
-    apply (frule_tac ?a="unat x" and ?b="unat y" in Divides.semiring_div_class.cancel_div_mod_rules(1))
-  sorry
-thm Divides.semiring_div_class.cancel_div_mod_rules(1)   
 lemma l11:"((x::word32) || (scast (y::  32 signed word))) && (scast (~~y)) = x && (scast (~~y))"
   apply (subst word_ao_dist)
 proof -
-  have " ((scast y)::word32) && scast (~~ y) = 0" unfolding scast_def sorry
+  have " ((scast y)::word32) && scast (~~ y) = 0"
+    apply (subst scast_NOT_simp)
+    by auto
   hence " x && scast (~~ y) || scast y && scast (~~ y) = x && scast (~~ y) || 0"
     by (simp add: \<open>scast y && scast (~~ y) = 0\<close>)
   thus "x && scast (~~ y) || scast y && scast (~~ y) = x && scast (~~ y)"  by simp
@@ -708,17 +695,11 @@ lemma mask_sw32_eq_0_eq_x :
   assumes "(x::word32) && scast (flag:: 32 signed word) = 0"
   shows " x && scast (~~flag) = x"
 proof -
-  let ?flag_w32 = "(scast flag)::word32"
-  let ?neg_flag_w32 =  "scast (~~flag) :: word32"
-  have l1[simp]: "?neg_flag_w32 = ~~ ?flag_w32" sorry
+  have l1[simp]: "(scast (~~flag) :: word32) = ~~ ((scast flag)::word32)"
+    using scast_NOT_simp by auto
   thus ?thesis using assms by (simp add: mask_eq_0_eq_x)
 qed
-  
-  (* declare [[show_types]]  *)
-  (* declare [[show_sorts]] *)
-  (* declare [[show_consts]] *)
-  
-  
+
 lemma node_in_path_nodesValid_imp_nodeValid_node[rule_format]:
   "n \<in> set (path s fst_node to) \<longrightarrow> 
    nodesValid s fst_node \<longrightarrow>
@@ -883,9 +864,11 @@ lemma path_nodeValid_reachable_imp_nodesValid[rule_format]:
         apply (metis sable_isa.nodesValid_not_null sable_isa.reachable_helper1)
        apply (metis reachable_helper1 sable_isa.nodesValid_not_null)
   using reachable_helper3 apply blast
-     apply (metis dual_order.strict_iff_order order_less_le_trans sable_isa.nodesValid_not_null sable_isa.reachable.simps(4) sable_isa.reachable_helper2)
+     apply (metis dual_order.strict_iff_order order_less_le_trans nodesValid_not_null
+            reachable.simps(4) reachable_helper2)
   using reachable_helper3 apply blast
-   apply (metis dual_order.strict_iff_order order_less_le_trans reachable_helper2 sable_isa.nodesValid_not_null sable_isa.reachable.simps(4))   
+   apply (metis dual_order.strict_iff_order order_less_le_trans reachable_helper2
+          nodesValid_not_null reachable.simps(4))   
   apply auto
    apply (frule node_reachable_in_path)
      apply auto
@@ -1060,12 +1043,34 @@ lemma shiftr3_upper_bound:"(x :: 32 word) >> 3 \<le> 0x1FFFFFFF"
   apply (simp add:shiftr3_is_div_8)
   apply unat_arith
   by auto
-thm intvl_no_overflow   
+  
 lemma intvl_no_overflow2:
-  "unat (a::'a::len word) + b \<le> 2 ^ LENGTH('a) \<Longrightarrow>
-(x \<in> {a..+b}) = (a \<le> x \<and> unat x < unat a + b)"
-  sorry
-thm intvl_no_overflow2[THEN iffD1]
+  assumes asm: "unat (a::'a::len word) + b \<le> 2 ^ LENGTH('a)"
+  shows "(x \<in> {a..+b}) = (a \<le> x \<and> unat x < unat a + b)"
+proof -
+  {
+    assume "x \<in> {a ..+ b}"
+    with intvl_no_overflow_lower_bound intvl_upper_bound asm
+    have "(a \<le> x \<and> unat x < unat a + b)" by blast    
+  }moreover
+  {
+    assume "(a \<le> x \<and> unat x < unat a + b)"
+    thm intvlI   
+    have "a + of_nat (unat x - unat a) \<in> {a ..+ b}"
+      apply (rule intvlI)
+      using `(a \<le> x \<and> unat x < unat a + b)` asm
+      by unat_arith
+    moreover have "a + of_nat (unat x - unat a) = x" 
+      using `(a \<le> x \<and> unat x < unat a + b)` asm
+      apply unat_arith
+      apply (subgoal_tac "unat (x - a) = unat x - unat a")
+       apply auto
+      by unat_arith
+    ultimately have "x \<in> {a ..+ b}" by argo
+  }
+  ultimately show ?thesis by fast  
+qed
+    
   
 lemma alloc'_invs:
   fixes size_bytes:: "32 word" and heap:: "unit ptr"
@@ -1112,7 +1117,6 @@ proof -
     and reachable: "reachable s (ptr_coerce heap) a"
     and "a \<noteq> NULL"
     and "c_guard a"
-    (* and "c_guard (a +\<^sub>p uint (2 + (size_bytes >> 3))) " *)
   let ?new_size_simplified = "(node_size s a && scast (~~ OCC_FLG) ||  scast OCC_FLG)"
   let ?new_s = "(update_node s a (mem_node_C
                 (node_size s a && scast (~~ OCC_FLG) ||  scast OCC_FLG)
@@ -1154,18 +1158,17 @@ proof -
     using  `nodeValid s a`
     apply (subst `node_next ?new_s a = node_next s a`)+ by (meson nodeValid_def)     
   ultimately have "nodeValid ?new_s a" unfolding nodeValid_def by presburger 
-  moreover have hrs_the_same_after_a:
-    "c_guard (a +\<^sub>p 1) \<Longrightarrow> \<forall> x. x \<ge> ptr_val (a +\<^sub>p 1) \<longrightarrow> hrs_the_same_at s ?new_s x"
-    using updated_node_hrs_the_same_elsewhere_incorrect by simp
+  
   have next_eq:"node_next ?new_s a = node_next s a" using updated_node_next by fast
       
   have hrs_the_same_except_a:"\<forall>p. p \<notin> ptr_span a \<longrightarrow> hrs_the_same_at s ?new_s p"
-    using updated_node_hrs_the_same_elsewhere_correct by blast   
+    using updated_node_hrs_the_same_elsewhere by blast   
   {
     assume "node_next s a = NULL"
     hence "node_next ?new_s a = NULL" using next_eq by presburger
     hence "nodesValid ?new_s a" using `nodeValid ?new_s a` by simp
-  } moreover {
+  } moreover 
+  {
     assume "node_next s a \<noteq> NULL"
     hence "node_next s a > a" using `nodeValid s a` unfolding nodeValid_def by meson
     have "nodesValid s (node_next s a)" 
@@ -1396,8 +1399,7 @@ next
   have "unat (?node_size_masked * 8) = unat ?node_size_masked * 8"
     using `unat ?node_size_masked * 8 < 2 ^ LENGTH(32)`
     by (metis  sable_isa.eight_eq_eight unat_of_nat_eq word_arith_nat_mult)   
-      
-      
+            
   {
     assume "?next \<noteq> NULL"
     hence "?next > a" using `?next \<noteq> NULL \<longrightarrow> ?next > a` by fast
@@ -1423,7 +1425,8 @@ next
     hence "unat_ptr ?next \<ge> unat_ptr ?new_next + 8" 
       using 1 2 by unat_arith
   } note new_next_next_unat_rel = this
-  {assume "?next \<noteq> NULL"
+  {
+    assume "?next \<noteq> NULL"
     hence "unat_ptr ?next \<ge> unat_ptr ?new_next + 8"
       using new_next_next_unat_rel by simp
     hence "unat_ptr ?next > unat_ptr ?new_next"
@@ -1459,7 +1462,7 @@ next
       apply (subgoal_tac "unat p \<ge>unat_ptr ?new_next + 8")
       by auto unat_arith    
     hence 1:"\<forall>p \<ge> ptr_val ?next. hrs_the_same_at s ?halfway_s p"  
-      using updated_node_hrs_the_same_elsewhere_correct by blast        
+      using updated_node_hrs_the_same_elsewhere by blast        
         
     have "\<forall>p \<ge> ptr_val ?next. p \<notin> ptr_span a" 
       using `unat_ptr ?next \<ge> unat_ptr a + size_of TYPE(mem_node_C)`
@@ -1469,7 +1472,7 @@ next
       by auto unat_arith      
         
     hence 2:"\<forall>p \<ge> ptr_val ?next. hrs_the_same_at ?halfway_s ?new_s p"
-      using updated_node_hrs_the_same_elsewhere_correct by blast
+      using updated_node_hrs_the_same_elsewhere by blast
         
     have "(\<forall>p \<ge> ptr_val ?next. hrs_the_same_at s ?new_s p)"
       using 1 2 by presburger
@@ -1851,8 +1854,8 @@ next
     using nodesValid_trans_back by presburger
   have "\<forall> p. p < ptr_val a \<longrightarrow> hrs_the_same_at s ?new_s p"
     apply clarify
-    apply (rule updated_node_blahblah_2) using new_next_g_a 
-    apply (subgoal_tac "ptr_val a < ptr_val ( a +\<^sub>p uint (2 + (size_bytes >> 3)))")
+    apply (rule dobule_update_heaps_eq_before) using new_next_g_a 
+      using `c_guard a` `c_guard ?new_next` unfolding c_guard_def 
     by (auto simp:ptr_less_def' ptr_less_def)
   hence hrs_the_same_heap_to_a:
     "\<forall> p. p \<ge> ptr_val ?heap_node \<and> p < ptr_val a \<longrightarrow> hrs_the_same_at s ?new_s p"
