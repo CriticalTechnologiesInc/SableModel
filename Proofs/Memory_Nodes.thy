@@ -53,14 +53,6 @@ lemma hrs_the_same_nodes_the_same:
    apply auto
   apply (rule heap_list_h_eq2)
   by simp
-
-typ "heap_typ_desc" 
-typ "heap_mem"
-typ "heap_raw_state"
-
-value "t_hrs_'"
-value "hrs_mem"
-value "hrs_htd"
   
 lemma MEM_NODE_OCCUPIED_FLAG_not_zero:
   "MEM_NODE_OCCUPIED_FLAG \<noteq> (0:: 32 signed word)" unfolding MEM_NODE_OCCUPIED_FLAG_def by auto
@@ -68,7 +60,20 @@ lemma MEM_NODE_OCCUPIED_FLAG_not_zero:
 lemma one_mask_neg_MNOF_not_zero[simp]:
   "(1::32 signed word) && ~~ MEM_NODE_OCCUPIED_FLAG = (0::32 signed word) \<Longrightarrow> False"
      unfolding MEM_NODE_OCCUPIED_FLAG_def by unat_arith
-
+  
+lemma OCC_FLAG_helper1: "(x::32 word) && (scast MEM_NODE_OCCUPIED_FLAG) = 0 \<Longrightarrow>
+    y \<le> x \<Longrightarrow>
+    y && (scast MEM_NODE_OCCUPIED_FLAG) = 0"
+  apply(subgoal_tac "scast MEM_NODE_OCCUPIED_FLAG = ~~ ((mask 31)::32 word)")
+   apply(subgoal_tac "y && mask 31 = y ")
+    apply (frule mask_eq_x_eq_0[THEN iffD1])
+    apply simp
+   apply (subgoal_tac "x \<le> mask 31")
+    apply (metis (no_types, hide_lams) and_mask_eq_iff_le_mask less_le_trans not_less)
+   apply (metis add.left_neutral word_and_le1 word_bool_alg.double_compl word_plus_and_or_coroll2)
+  unfolding MEM_NODE_OCCUPIED_FLAG_def mask_def
+  by simp
+    
 abbreviation
   array_span :: "'a::mem_type ptr \<Rightarrow> nat \<Rightarrow> addr set" where
   "array_span p arr_size \<equiv> {ptr_val p ..+ arr_size * size_of TYPE('a)}"

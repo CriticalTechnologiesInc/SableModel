@@ -3,6 +3,7 @@ theory Memory
     "../AutoCorres/Impl"
     "../lib/ExtraLemmas"
     "./Memory_Nodes"
+    "./Memory_ExtraLemmas"
     "~/Isabelle2016-1/src/HOL/Library/LaTeXsugar"
     
 begin
@@ -12,6 +13,7 @@ begin
   
 abbreviation "ALIGN_BITS \<equiv> 3"
 abbreviation "OCC_FLG \<equiv> MEM_NODE_OCCUPIED_FLAG" 
+abbreviation "SZ_mem_node \<equiv> size_of TYPE(mem_node_C)"
   
 abbreviation unat_ptr :: "'a ptr \<Rightarrow> nat"
   where "unat_ptr p \<equiv> unat (ptr_val p)"
@@ -57,17 +59,11 @@ where
   "init_heap_P p n s \<equiv> 0 \<notin> {ptr_val p..+unat n} \<and> is_aligned (ptr_val p) ALIGN_BITS \<and>
     (\<forall>node \<in> {ptr_val p..+unat n}. snd (hrs_htd (t_hrs_' s) node) = Map.empty)"*)
     
-    (* FIXME move it out of here *)
-lemma unat_add_le: "unat (a + b) \<le> unat (a::('a::len word)) + unat b "
-  by unat_arith
-    
 definition nodeFree :: "globals \<Rightarrow> mem_node_C ptr \<Rightarrow> bool"
   where "nodeFree s node \<equiv>
     (let size = node_size_masked s node in
-    \<forall>p \<in> {ptr_val (node +\<^sub>p 1)..+unat size * size_of TYPE(mem_node_C)}.
+    \<forall>p \<in> {ptr_val (node +\<^sub>p 1)..+unat size * SZ_mem_node}.
       snd (hrs_htd (t_hrs_' s) p) = Map.empty)"
-    
-lemma eight_eq_eight : "unat (8::32 word) = 8" by simp
     
 definition nodeValid :: "globals \<Rightarrow> mem_node_C ptr \<Rightarrow> bool"
   where "nodeValid s node = 
@@ -81,25 +77,25 @@ definition nodeValid :: "globals \<Rightarrow> mem_node_C ptr \<Rightarrow> bool
    (occupied = 0 \<longrightarrow> nodeFree s node) \<and> 
    (next \<noteq> NULL \<longrightarrow> next > node \<and> next \<ge> (node +\<^sub>p 1)) )"
        
-lemma nodeValid_node_size_l1_new:
-  "nodeValid s node \<Longrightarrow>  unat_ptr node + 8 + unat ((node_size_masked s node) * 8) \<le> 
-    2 ^ LENGTH(32)"
+lemma nodeValid_node_node_size_upper_bound:
+  "nodeValid s node \<Longrightarrow>  
+   unat_ptr node + 8 + unat ((node_size_masked s node) * 8) \<le> 2 ^ LENGTH(32)"
   unfolding nodeValid_def Let_def
   apply (subgoal_tac "unat (ptr_val (next_C (h_val (hrs_mem (t_hrs_' s)) node))) < 2 ^ LENGTH(32)")
    apply (auto simp:if_split)[1]
   by blast
     
-lemma nodeValid_node_size_l1:
-  "nodeValid s node \<Longrightarrow>  unat_ptr (node +\<^sub>p 1) + unat ((node_size_masked s node) * 8) \<le> 
-    2 ^ LENGTH(32)"
-  apply (drule nodeValid_node_size_l1_new)
+lemma nodeValid_node_node_size_upper_bound':
+  "nodeValid s node \<Longrightarrow>
+   unat_ptr (node +\<^sub>p 1) + unat ((node_size_masked s node) * 8) \<le> 2 ^ LENGTH(32)"
+  apply (drule nodeValid_node_node_size_upper_bound)
   unfolding ptr_add_def  
   by unat_arith 
 
-lemma nodeValid_node_size_l2_new:
+lemma nodeValid_node_node_size_upper_bound2:
   "nodeValid s node \<Longrightarrow>  
    unat_ptr node + 8 + unat (node_size_masked s node) * 8 \<le> 2 ^ LENGTH(32)"
-  apply (frule nodeValid_node_size_l1_new)
+  apply (frule nodeValid_node_node_size_upper_bound)
   apply (subgoal_tac "unat (node_size_masked s node) * 8 = unat (node_size_masked s node * 8)")
    apply argo
   unfolding nodeValid_def Let_def
@@ -108,18 +104,18 @@ lemma nodeValid_node_size_l2_new:
   apply (subst (asm) unat_mult_lem) 
     by argo
     
-lemma nodeValid_node_size_l2:
+lemma nodeValid_node_node_size_upper_bound2':
   "nodeValid s node \<Longrightarrow>  
    unat_ptr (node +\<^sub>p 1) + unat (node_size_masked s node) * 8 \<le> 2 ^ LENGTH(32)"
-  apply (drule nodeValid_node_size_l2_new)
+  apply (drule nodeValid_node_node_size_upper_bound2)
   unfolding ptr_add_def  
   by unat_arith 
     
-lemma nodeValid_node_size_l3:
+lemma nodeValid_node_size_upper_bound:
   "nodeValid s node \<Longrightarrow>
      8 + unat (node_size_masked s node) * 8 < 2 ^ LENGTH(32)"
   apply (subgoal_tac "ptr_val node > 0")
-   apply (drule nodeValid_node_size_l2_new)
+   apply (drule nodeValid_node_node_size_upper_bound2)
    apply unat_arith
   unfolding nodeValid_def Let_def apply clarify
   apply (drule c_guard_NULL) 
@@ -223,29 +219,7 @@ lemma reachable_trans2[rule_format]:
    reachable s node (node_next s to)"
   apply (rule_tac ?a0.0=s and ?a1.0=node and ?a2.0=to in  reachable.induct)
   by auto
-  
-lemma intvl_no_overflow_lower_bound:
-  "(a :: ('a::{len}) word) \<in> {x ..+  sz} \<Longrightarrow> unat x + sz \<le> 2 ^ LENGTH('a) \<Longrightarrow> a \<ge> x"
-  apply unat_arith unfolding intvl_def  apply unat_arith
-  apply auto 
-  apply (subgoal_tac "unat (of_nat k) = k")
-   apply (smt add.commute add_leD1 add_less_mono1 order_less_le_trans unat_of_nat unat_of_nat_eq word_nchotomy)
-  by (smt add.commute add.left_neutral add_diff_cancel_right' add_leD1 add_lessD1 diff_add_inverse 
-      diff_diff_cancel diff_le_self le_Suc_ex less_diff_conv less_irrefl_nat less_or_eq_imp_le 
-      linorder_not_less nat_add_left_cancel_less nat_less_le not_add_less1 order_less_le_trans unat_of_nat_eq)
     
-lemma intvl_upper_bound: "a \<in> {x ..+ sz} \<Longrightarrow> 
-  unat a < unat x + sz"
-  unfolding intvl_def
-  apply unat_arith
-  apply (auto simp add: unat_of_nat) 
-  using mod_less by blast
-    
-lemma zero_not_in_intvl_lower_bound:
-  "(a::('a::len) word) \<in> {x ..+ sz} \<Longrightarrow> 0 \<notin> {x ..+  sz}  \<Longrightarrow> a \<ge>  x "
-  apply (drule zero_not_in_intvl_no_overflow)
-  by (rule intvl_no_overflow_lower_bound)
-      
 lemma updated_node_hrs_the_same_elsewhere:
   assumes x_val:"x \<notin> ptr_span p"
   shows"hrs_the_same_at s (update_node s p new_node) x"
@@ -347,9 +321,6 @@ lemma p_in_path_l_next[rule_format]:
   apply (rule_tac ?a0.0=s and ?a1.0=node and ?a2.0=to in path.induct)
   by auto
 
-lemma split_goal:"(P \<longrightarrow> Q) \<Longrightarrow> (\<not>P \<longrightarrow> Q) \<Longrightarrow> Q" 
-  by auto
-    
 lemma nodeValid_edge_of_addr_space:
   assumes "nodeValid s node"
   shows "(node +\<^sub>p 1) > node \<or> (node_size_masked s node) = 0"
@@ -358,14 +329,14 @@ proof -
   have "unat (node_size_masked s node) * 8 < 2 ^ LENGTH(32)" using `nodeValid s node`
     unfolding nodeValid_def by meson
   hence "unat (node_size_masked s node) * 8 = unat ((node_size_masked s node) * 8)"
-    using unat_mult_lem  by (metis sable_isa.eight_eq_eight)
+    using unat_mult_lem  by (metis eight_eq_eight)
   {assume "(node_size_masked s node) \<noteq> 0"    
     hence "(node_size_masked s node) * 8 \<noteq> 0"
       using `unat (node_size_masked s node) * 8 = unat ((node_size_masked s node) * 8)`
       using unat_eq_zero by fastforce
     hence "unat_ptr node + 8 < 2 ^ LENGTH(32)" 
       using `nodeValid s node` apply simp
-      apply (frule nodeValid_node_size_l1_new) 
+      apply (frule nodeValid_node_node_size_upper_bound) 
       apply auto
       by (meson add_le_same_cancel1 le_def less_le_trans not_gr_zero unat_eq_zero) 
     hence "(node +\<^sub>p 1) > node" 
@@ -404,7 +375,7 @@ proof-
      apply auto[1] 
     by (metis mem_node_C_size zero_not_in_intvl_no_overflow)     
   have "\<forall> p \<in> ptr_span node. unat p <unat_ptr node + 8" 
-    using sable_isa.intvl_upper_bound by auto
+    using intvl_upper_bound by auto
   hence "\<forall> p \<in> ptr_span node. unat p <unat_ptr node + 8 + (unat (node_size_masked s node)) * 8"
     by auto
   with 1 have c1:"\<forall> p \<in> ptr_span node. hrs_the_same_at s s' p" 
@@ -419,7 +390,7 @@ proof-
       apply auto
       apply (frule intvl_no_overflow_lower_bound)
       using `nodeValid s node`
-      using sable_isa.nodeValid_node_size_l2 apply blast
+      using sable_isa.nodeValid_node_node_size_upper_bound2' apply blast
       using `(node +\<^sub>p 1) > node`
       by (meson le_less_trans less_irrefl nat_le_linear ptr_less_def ptr_less_def' word_le_nat_alt)
     moreover have "\<forall>p \<in> ?arr_span.unat p < unat_ptr node + 8 + (unat (node_size_masked s node)) * 8"
@@ -639,47 +610,7 @@ lemma heaps_eq_nodesValid_reachable_imp_reachable:
     to \<noteq> NULL \<Longrightarrow>
     reachable s' node to" 
   using heaps_eq_nodesValid_reachable_imp_paths_eq_reachable by presburger 
-    
-thm word_mult_le_mono1
-  
-lemma l10: 
-  assumes "unat x + unat y < 2 ^ 32"
-    and "y \<noteq> 0"   
-  shows "((x:: word32) div ( y :: word32)) * y + y \<ge> x"
-proof -
-  have "unat ((x div y) * y) = unat (x div y) * unat y"
-    apply unat_arith
-    apply auto
-    by (metis (no_types, hide_lams) Word_Miscellaneous.dtle le_unat_uoi unat_div word_arith_nat_mult)
-  have "unat ((x div y) * y) = (unat x div unat y) * unat y"
-    apply unat_arith
-    apply auto
-    by (simp add: \<open>unat (x div y * y) = unat (x div y) * unat y\<close> unat_div)
-  have "unat x div unat y * unat y + unat x mod unat y = unat x"
-    by simp
-  show ?thesis
-    using `unat x + unat y < 2 ^ 32` `y \<noteq> 0` 
-      `unat ((x div y) * y) = (unat x div unat y) * unat y`
-  apply unat_arith
-  apply auto  
-   apply unat_arith
-     apply auto
-    apply (subgoal_tac "unat x div unat y * unat y + unat x mod unat y = unat x")
-     apply (metis mod_le_divisor nat_add_left_cancel_le)
-     apply simp
-    using `unat x div unat y * unat y + unat x mod unat y = unat x`
-      by arith
-qed
-
-lemma scast_NOT_simp: "(scast (~~(flag :: 32 signed word)) :: word32) = ~~ ((scast flag)::word32)"
-  unfolding word_not_def
-  apply (subst scast_down_wi)
-   defer
-   apply (subst uint_scast)
-   apply (rule refl)
-  apply (subst is_down)
-  by simp  
-    
+        
 lemma l11:"((x::word32) || (scast (y::  32 signed word))) && (scast (~~y)) = x && (scast (~~y))"
   apply (subst word_ao_dist)
 proof -
@@ -709,31 +640,7 @@ lemma node_in_path_nodesValid_imp_nodeValid_node[rule_format]:
     apply (erule nodesValid_nodeValid)+
   apply (frule nodesValid_not_next_null)
   by auto
-    
-lemma nodesValid_reachable_imp_in_path: 
-  assumes nodesValid: "nodesValid s fst_node" 
-    and reachable:"reachable s fst_node to"
-    and "to \<noteq> NULL" and "fst_node \<noteq> to"
-  shows  "fst_node \<in> set (path s fst_node to)"
-proof-
-  let ?next = "node_next s fst_node"
-  from nodesValid have "nodeValid s fst_node" using nodesValid_def' by meson
-  hence "c_guard fst_node" and  "?next \<noteq> NULL \<longrightarrow> ?next > fst_node" unfolding nodeValid_def
-    by meson+
-  moreover from reachable and `fst_node \<noteq> to` `to \<noteq> NULL` 
-  have "?next \<noteq> NULL" using reachable_helper3 by blast 
-  ultimately have "?next > fst_node" by simp
-  have "fst_node \<noteq> NULL" using `c_guard fst_node` by force
-  have "reachable s ?next to" 
-    using `fst_node < ?next` `fst_node \<noteq> NULL` `fst_node \<noteq> to` reachable
-      reachable.simps(4) by simp
-  hence "?next \<le> to" using `to \<noteq> NULL` by (rule reachable_helper2) 
-  hence "path s fst_node to = fst_node # path s ?next to" 
-    using `fst_node \<noteq> NULL` `fst_node < ?next` `?next \<le> to`    
-      path.simps(2) by fast
-  thus ?thesis by simp
-qed
-  
+
 lemma node_reachable_in_path[rule_format]:
   "reachable s node to \<longrightarrow> node \<noteq> to\<longrightarrow> to \<noteq> NULL \<longrightarrow> node \<in> set (path s node to )"
   apply(rule_tac ?a0.0=s and ?a1.0=node and ?a2.0=to in reachable.induct)
@@ -753,9 +660,9 @@ proof-
   have "unat ?node_size * 8 < 2 ^ LENGTH(32)" using `nodeValid s node`
     unfolding nodeValid_def by meson
   hence "unat ?node_size * 8 = unat (?node_size * 8)"
-    using unat_mult_lem  by (metis sable_isa.eight_eq_eight)
+    using unat_mult_lem  by (metis eight_eq_eight)
   have 0:"unat_ptr (node +\<^sub>p 1) + unat (?node_size * 8) \<le>  2 ^ LENGTH(32)"
-    using `nodeValid s node` by (rule nodeValid_node_size_l1)      
+    using `nodeValid s node` by (rule nodeValid_node_node_size_upper_bound')      
   have "\<forall> p \<in> ptr_span node. p \<ge> ptr_val node" 
     using `c_guard node` unfolding c_guard_def c_null_guard_def
     apply auto
@@ -849,7 +756,6 @@ next
   ultimately show "nodesValid s' heap" using nodesValid_trans_back by fast
 qed 
   
-thm nodesValid_reachable_imp_in_path
 lemma path_nodeValid_reachable_imp_nodesValid[rule_format]:
   "nodeValid s heap \<longrightarrow>
        (\<forall> p \<in> set (path s heap node). nodeValid s p) \<longrightarrow>
@@ -874,102 +780,13 @@ lemma path_nodeValid_reachable_imp_nodesValid[rule_format]:
      apply auto
    apply (frule nodesValid_not_null, auto)
   using sable_isa.nodesValid_def' unfolding Let_def by blast
-    
-lemma nodesValid_l3:
-  "nodeValid s node \<Longrightarrow>
-   node_next s node = NULL \<Longrightarrow>
-    nodesValid s node"
-  by (meson nodesValid_def')
-    
-lemma c_guard_l1:
-  assumes "c_guard (a::('a::mem_type) ptr)"
-    "\<not> c_guard (a +\<^sub>p 1)"
-    "b > a" 
-    "b \<ge> a +\<^sub>p 1"
-  shows "\<not> c_null_guard b" 
-proof -
-  have "\<not> c_null_guard ( a +\<^sub>p 1)" using `c_guard a` `\<not> c_guard (a +\<^sub>p 1)`
-    unfolding c_guard_def apply auto    
-    apply(frule ptr_aligned_plus[where i = 1]) by auto
-  hence "0 \<in> ptr_span (a +\<^sub>p 1)" unfolding c_null_guard_def by auto
-  have "0 \<in> ptr_span b" using `b \<ge> a +\<^sub>p 1` using `0 \<in> ptr_span (a +\<^sub>p 1)` unfolding intvl_def
-  proof simp
-    assume "a +\<^sub>p 1 \<le> b"
-      and "\<exists>k. ptr_val (a +\<^sub>p 1) + of_nat k = 0 \<and> k < size_of TYPE('a)"
-    then obtain k where k:"ptr_val (a +\<^sub>p 1) + of_nat k = 0 \<and> k < size_of TYPE('a)" by auto
-    hence "ptr_val (a +\<^sub>p 1) + of_nat k = 0" by auto
-    {
-      assume "((of_nat k)::32 word) \<noteq> 0"
-      have "ptr_val b \<ge> ptr_val (a +\<^sub>p 1)" using `b \<ge> a +\<^sub>p 1`  by (simp add: ptr_le_def ptr_le_def')
-      hence 1:"ptr_val b - ptr_val (a +\<^sub>p 1) \<le> of_nat k" 
-        using `ptr_val (a +\<^sub>p 1) + of_nat k = 0`
-        apply unat_arith apply auto
-        using `of_nat k \<noteq> 0` 
-        apply (subgoal_tac "unat ((of_nat k)::32 word) = 0 \<Longrightarrow> ((of_nat k)::32 word) = 0")
-         apply auto[1]
-        apply (subst (asm) (3) unat_eq_0)  by auto
-          
-      let ?k2' = "of_nat k - ( ptr_val b - ptr_val (a +\<^sub>p 1))"
-      have "ptr_val b + ?k2' = of_nat k + ptr_val (a +\<^sub>p 1)" by simp
-      hence "ptr_val b + ?k2' = 0" using k by (simp add: add.commute)
-      hence 2:"ptr_val b + of_nat (unat ?k2') = 0" by simp
-          
-      let ?of_nat_k = "((of_nat k):: 32 word)"
-      have "?k2' \<le> ?of_nat_k" using 1  word_sub_le by auto
-      hence "unat ?k2' \<le> unat ?of_nat_k" by (simp add: word_le_nat_alt) 
-      moreover have "unat ?of_nat_k \<le> k" by (metis le_cases le_unat_uoi) 
-      moreover  have "k < size_of TYPE('a)" using k by simp
-      ultimately have "(unat ?k2') < size_of TYPE('a)" by simp
-      hence "ptr_val b + of_nat (unat ?k2') = 0 \<and> (unat ?k2') < size_of TYPE('a)" using 2 by simp
-      hence "\<exists>k::nat. ptr_val b + of_nat k = (0::32 word) \<and> k < size_of TYPE('a)" by (frule exI)
-    }
-    moreover{  
-      assume k_eq_0:"((of_nat k)::32 word) = 0" 
-      let ?k2' = "of_nat (size_of TYPE('a)) - ( ptr_val b - ptr_val a)"
-      have "ptr_val b > ptr_val a" using `b>a` 
-        by (simp add: ptr_less_def ptr_less_def')
-      hence "unat_ptr b > unat_ptr a" using unat_mono by auto
-      from k_eq_0 have "ptr_val (a +\<^sub>p 1)= 0" using k by unat_arith
-      hence 1:"ptr_val a + of_nat (size_of TYPE('a)) = 0" unfolding ptr_add_def by simp
-      hence 2: "ptr_val b - ptr_val a < of_nat (size_of TYPE('a))" 
-        using k_eq_0
-        apply unat_arith (* SLOW! *) apply auto
-         apply (subgoal_tac "unat_ptr a \<noteq> (0::nat)")
-          apply auto[1]
-        using `c_guard a` 
-         apply (metis len_of_addr_card max_size mem_type_simps(3) neq0_conv unat_of_nat_len)
-        using `unat_ptr b > unat_ptr a` by simp
-      hence "ptr_val b + ?k2' = 0" using 1  by (simp add: add.commute)
-      hence 3:"ptr_val b + of_nat (unat ?k2') = 0" by simp
-      have "ptr_val b - ptr_val a > 0" using `ptr_val b > ptr_val a` 
-        using word_neq_0_conv by fastforce 
-      with 2 have "?k2' < of_nat (size_of TYPE('a))"  by unat_arith (* VERY SLOW! *)
-      hence "unat ?k2' < size_of TYPE('a)" using unat_less_helper by auto
-      with 3 have "ptr_val b + of_nat (unat ?k2') = 0 \<and> unat ?k2' < size_of TYPE('a)" by auto
-      hence "\<exists>k::nat. ptr_val b + of_nat k = (0::32 word) \<and> k < size_of TYPE('a)" by (frule exI)  
-    }
-    ultimately show "\<exists>k::nat. ptr_val b + of_nat k = (0::32 word) \<and> k < size_of TYPE('a)"
-      by auto
-  qed 
-  thus "\<not> c_null_guard b" unfolding c_null_guard_def by auto
-qed
-  
-lemma self_impl: "Q \<Longrightarrow> Q" by assumption
-    
+   
 lemma nodeValid_next_val: "nodeValid s node \<Longrightarrow>
   node_next s node \<noteq> NULL \<Longrightarrow>
   unat_ptr (node_next s node) \<ge> unat_ptr node + 8 +  unat ((node_size_masked s node) * 8)"
   unfolding nodeValid_def Let_def 
   by(simp split:if_split) 
     
-    (* FIXME put somewhere else *)    
-lemma unat_add_lem_3:
-  "unat (a::'a::len word) + unat b + unat c < 2 ^ LENGTH('a) =
-    (unat (a + b + c) = unat a + unat b + unat c)"
-  using unat_add_lem
-  by (metis add_lessD1 unat_lt2p) 
-    
-    (* consider adding more to the conclusion *)
 lemma nodesValid_heaps_eq_nodeValid_in_path: 
   assumes "nodesValid s heap"
     and hrs_the_same: "\<forall> p . p \<ge> ptr_val heap \<and> p < ptr_val to \<longrightarrow> hrs_the_same_at s s' p"
@@ -1003,7 +820,7 @@ proof-
       apply(auto simp:ptr_le_simp) by unat_arith 
     hence "unat_ptr n + 8 + unat (node_size_masked s n) * 8 \<le> unat_ptr to"     
       apply unat_arith apply auto 
-      by (metis \<open>nodeValid s n\<close> nodeValid_def sable_isa.eight_eq_eight unat_of_nat_eq word_arith_nat_mult)
+      by (metis \<open>nodeValid s n\<close> nodeValid_def eight_eq_eight unat_of_nat_eq word_arith_nat_mult)
     hence c2:"\<forall> p . unat p < unat_ptr n + 8 + (unat (node_size_masked s n)) * 8
       \<longrightarrow> p <ptr_val to" apply auto 
       using less_le_trans word_less_nat_alt by blast     
@@ -1016,61 +833,9 @@ proof-
   thus ?thesis by fast
 qed
   
-  (*FIXME move these out of here  *) 
-  
-lemma OCC_FLAG_helper1: "(x::32 word) && (scast OCC_FLG) = 0 \<Longrightarrow>
-    y \<le> x \<Longrightarrow>
-    y && (scast OCC_FLG) = 0"
-  apply(subgoal_tac "scast OCC_FLG = ~~ ((mask 31)::32 word)")
-   apply(subgoal_tac "y && mask 31 = y ")
-    apply (frule mask_eq_x_eq_0[THEN iffD1])
-    apply simp
-   apply (subgoal_tac "x \<le> mask 31")
-    apply (metis (no_types, hide_lams) and_mask_eq_iff_le_mask less_le_trans not_less)
-   apply (metis add.left_neutral word_and_le1 word_bool_alg.double_compl word_plus_and_or_coroll2)
-  unfolding MEM_NODE_OCCUPIED_FLAG_def mask_def
-  by simp
-    
 lemma OCC_FLG_neg : "(scast (~~ MEM_NODE_OCCUPIED_FLAG) ::32 word) = ~~ scast MEM_NODE_OCCUPIED_FLAG"
   by (metis (no_types) mask_eq_0_eq_x l11 mask_sw32_eq_0_eq_x word_bw_comms(1) word_log_esimps(7) 
-      word_log_esimps(9) word_not_not)
-    
-lemma unat_addition_less_pres:"unat (a::'a::len word) + unat b < unat c \<Longrightarrow> a + b < c"
-  by unat_arith
-lemma unat_addition_le_pres:"unat (a::'a::len word) + unat b \<le> unat c \<Longrightarrow> a + b \<le> c"
-  by unat_arith
-lemma shiftr3_upper_bound:"(x :: 32 word) >> 3 \<le> 0x1FFFFFFF"
-  apply (simp add:shiftr3_is_div_8)
-  apply unat_arith
-  by auto
-  
-lemma intvl_no_overflow2:
-  assumes asm: "unat (a::'a::len word) + b \<le> 2 ^ LENGTH('a)"
-  shows "(x \<in> {a..+b}) = (a \<le> x \<and> unat x < unat a + b)"
-proof -
-  {
-    assume "x \<in> {a ..+ b}"
-    with intvl_no_overflow_lower_bound intvl_upper_bound asm
-    have "(a \<le> x \<and> unat x < unat a + b)" by blast    
-  }moreover
-  {
-    assume "(a \<le> x \<and> unat x < unat a + b)"
-    thm intvlI   
-    have "a + of_nat (unat x - unat a) \<in> {a ..+ b}"
-      apply (rule intvlI)
-      using `(a \<le> x \<and> unat x < unat a + b)` asm
-      by unat_arith
-    moreover have "a + of_nat (unat x - unat a) = x" 
-      using `(a \<le> x \<and> unat x < unat a + b)` asm
-      apply unat_arith
-      apply (subgoal_tac "unat (x - a) = unat x - unat a")
-       apply auto
-      by unat_arith
-    ultimately have "x \<in> {a ..+ b}" by argo
-  }
-  ultimately show ?thesis by fast  
-qed
-    
+      word_log_esimps(9) word_not_not)    
   
 lemma alloc'_invs:
   fixes size_bytes:: "32 word" and heap:: "unit ptr"
@@ -1086,7 +851,7 @@ lemma alloc'_invs:
         and M="\<lambda> ((n,y),s). ptr_val n"])
   apply (wp )
       prefer 5
-      apply (rule_tac Q="heap_invs s heap" in self_impl, simp)
+    apply assumption
      prefer 4
      apply (simp add: size_bytes_g0)
      apply (rule return_wp) 
@@ -1347,7 +1112,7 @@ next
     using `(size_bytes >> 3) + 1  < ?node_size_masked`
     by (metis eight_eq_eight unat_0 word_gt_0_no word_mult_less_mono1 zero_neq_numeral)          
   moreover have "unat_ptr a + 8 + unat (?node_size_masked * 8) \<le> 2 ^ LENGTH(32)"
-    using `nodeValid s a` nodeValid_node_size_l1_new by fast 
+    using `nodeValid s a` nodeValid_node_node_size_upper_bound by fast 
   ultimately have "unat_ptr a + 8 + unat ( ((size_bytes >>3) +1) * 8) <  2 ^ LENGTH(32)"
     using `(size_bytes >>3) +1 < ?node_size_masked` `unat ?node_size_masked * 8 < 2 ^ LENGTH(32)`
     by unat_arith
@@ -1356,7 +1121,7 @@ next
         unat (ptr_val a + 8 + ((size_bytes >> 3) + 1) * 8)"
     apply(insert `unat_ptr a + 8 + unat (((size_bytes >> 3) + 1) * 8) < 2 ^ LENGTH(32)`) 
     using  unat_add_lem_3
-    by (metis sable_isa.eight_eq_eight) 
+    by (metis eight_eq_eight) 
   hence "unat_ptr a + 8 + unat (?new_size_masked * 8) = unat_ptr (a +\<^sub>p uint (?new_size_masked + 1))"
     apply (simp only: new_size_eq)
     unfolding ptr_add_def apply (simp only: mem_node_C_size)
@@ -1395,10 +1160,10 @@ next
     using `nodeValid s a` unfolding nodeValid_def by meson 
   hence "unat (((size_bytes >> 3) + 1) * 8) = unat ((size_bytes >> 3) + 1) * 8"
     using \<open>unat ((size_bytes >> 3) + 1) * 8 < 2 ^ LENGTH(32)\<close>
-    by (metis  sable_isa.eight_eq_eight unat_of_nat_eq word_arith_nat_mult)
+    by (metis  eight_eq_eight unat_of_nat_eq word_arith_nat_mult)
   have "unat (?node_size_masked * 8) = unat ?node_size_masked * 8"
     using `unat ?node_size_masked * 8 < 2 ^ LENGTH(32)`
-    by (metis  sable_isa.eight_eq_eight unat_of_nat_eq word_arith_nat_mult)   
+    by (metis  eight_eq_eight unat_of_nat_eq word_arith_nat_mult)   
             
   {
     assume "?next \<noteq> NULL"
@@ -1406,7 +1171,7 @@ next
         
     have "unat ?node_size_masked * 8 = unat (?node_size_masked * 8)"
       using \<open>nodeValid s a\<close> unfolding nodeValid_def Let_def
-      by (metis sable_isa.eight_eq_eight unat_of_nat_eq word_arith_nat_mult)    
+      by (metis eight_eq_eight unat_of_nat_eq word_arith_nat_mult)    
     have 1:"unat_ptr a + 8 + unat ?node_size_masked * 8 \<le> unat_ptr ?next" 
       using `nodeValid s a` `?next \<noteq> NULL` unfolding nodeValid_def Let_def
       apply (subst `unat ?node_size_masked * 8 = unat (?node_size_masked * 8)`)
@@ -1414,7 +1179,7 @@ next
         
     have "unat ((size_bytes >> 3) + 1) * 8 = unat (((size_bytes >> 3) + 1) * 8)"
       using `unat ((size_bytes >> 3) + 1) * 8 < 2 ^ LENGTH(32)`
-      by (metis sable_isa.eight_eq_eight unat_of_nat_eq word_arith_nat_mult)
+      by (metis eight_eq_eight unat_of_nat_eq word_arith_nat_mult)
         
     have 2:"unat_ptr a + 8 + unat ((size_bytes >> 3) + 1) * 8 = unat_ptr ?new_next"
       apply (insert `unat_ptr a + 8 + unat (((size_bytes >> 3) + 1) * 8) = unat_ptr ?new_next`)
@@ -1448,15 +1213,15 @@ next
       using next_new_next_rel by blast
     let ?halfway_s = "(update_node s ?new_next (mem_node_C ?new_next_size ?next))"
     let ?new_s = "(update_node ?halfway_s a (mem_node_C ?new_size ?new_next))"
-    have "unat_ptr ?next \<ge> unat_ptr a + size_of TYPE(mem_node_C)"
+    have "unat_ptr ?next \<ge> unat_ptr a + SZ_mem_node"
       using `nodeValid s a` `?next \<noteq> NULL` unfolding nodeValid_def Let_def
       by auto
     have "\<forall>p \<in> ptr_span ?new_next. unat p < unat_ptr ?new_next + 8"
       using intvl_upper_bound by auto
-    have "unat_ptr ?next \<ge> unat_ptr ?new_next + size_of TYPE(mem_node_C)"
+    have "unat_ptr ?next \<ge> unat_ptr ?new_next + SZ_mem_node"
       using `?next \<noteq> NULL` new_next_next_unat_rel by fastforce
     have "\<forall>p \<ge> ptr_val ?next. p \<notin> ptr_span ?new_next" 
-      using `unat_ptr ?next \<ge> unat_ptr ?new_next + size_of TYPE(mem_node_C)`
+      using `unat_ptr ?next \<ge> unat_ptr ?new_next + SZ_mem_node`
       using `\<forall>p \<in> ptr_span ?new_next. unat p < unat_ptr ?new_next + 8`
       apply auto
       apply (subgoal_tac "unat p \<ge>unat_ptr ?new_next + 8")
@@ -1465,7 +1230,7 @@ next
       using updated_node_hrs_the_same_elsewhere by blast        
         
     have "\<forall>p \<ge> ptr_val ?next. p \<notin> ptr_span a" 
-      using `unat_ptr ?next \<ge> unat_ptr a + size_of TYPE(mem_node_C)`
+      using `unat_ptr ?next \<ge> unat_ptr a + SZ_mem_node`
       using `\<forall>p \<in> ptr_span a. unat p < unat_ptr a + 8`
       apply auto
       apply (subgoal_tac "unat p \<ge>unat_ptr a + 8")
@@ -1495,12 +1260,12 @@ next
       by (simp add: sable_isa.l11 sable_isa.mask_sw32_eq_0_eq_x) (* useless? *)
         
     have "8 + unat ?node_size_masked * 8 < 2 ^ LENGTH(32)" 
-      using `nodeValid s a` nodeValid_node_size_l3 by blast
+      using `nodeValid s a` nodeValid_node_size_upper_bound by blast
     have node_node_size_bound: "unat (ptr_val a) + 8 + unat (?node_size_masked * 8) 
       \<le> (if ?next \<noteq> NULL then unat (ptr_val ?next) else 2 ^ LENGTH(32))" 
       using `nodeValid s a` unfolding nodeValid_def Let_def by simp 
     have node_node_size_bound_weak:"unat (ptr_val a)+ 8+ unat (?node_size_masked* 8) \<le> 2^ LENGTH(32)" 
-      using \<open>nodeValid s a\<close> sable_isa.nodeValid_node_size_l1_new by blast
+      using \<open>nodeValid s a\<close> sable_isa.nodeValid_node_node_size_upper_bound by blast
     have "2 + (size_bytes >> 3) \<le> ?node_size_masked"
       using `(size_bytes >> 3) + 1  < ?node_size_masked` by unat_arith
     have "?new_next_size = ?node_size_masked - (2 + (size_bytes >> 3))"
@@ -1527,26 +1292,28 @@ next
        apply (subgoal_tac "8 + unat ((size_bytes >> 3) + 1) * 8 < 8 + unat (?node_size_masked) * 8")
         apply (simp add: word_less_nat_alt)
        defer
-       apply (subgoal_tac "unat (8 + ((size_bytes >> 3) + 1) * 8) \<le> unat 8 + unat (((size_bytes >> 3) + 1) * 8)")
+       apply (subgoal_tac "unat(8 +((size_bytes >>3) +1) *8) \<le> unat 8 +unat(((size_bytes >>3) +1) *8)")
         prefer 2
       using unat_add_le apply blast 
     proof - (* sledgehammered *)
       have f1: "\<And>w. unat (8 + (w::32 word)) \<le> 8 + unat w"
-        by (metis sable_isa.eight_eq_eight unat_add_le)
+        by (metis eight_eq_eight unat_add_le)
       then have "\<And>w. unat (8 + (w::32 word)) \<le> 8 + 2 ^ len_of (TYPE(32)::32 itself)"
         by (meson add_le_cancel_left le_trans nat_less_le unat_lt2p)
       then have "\<And>n w. n \<le> 8 + 2 ^ len_of (TYPE(32)::32 itself) \<or> \<not> n \<le> unat (8 + (w::32 word))"
         using le_trans by blast
       then show "unat (8 + ((size_bytes >> 3) + 1) * 8) \<le> 8 + unat ((size_bytes >> 3) + 1) * 8"
-        using f1 by (metis (no_types) add_le_cancel_left nat_le_linear nat_less_le eight_eq_eight unat_mult_lem)
+        using f1 
+        by (metis add_le_cancel_left nat_le_linear nat_less_le eight_eq_eight unat_mult_lem)
     next 
       have f1: "\<And>w wa. nat (uint (w::32 word)) < nat (uint wa) \<or> \<not> w < wa"
         by (simp add: unat_def word_less_nat_alt)
       have "1 + (size_bytes >> 3) < scast (~~ OCC_FLG) && node_size s a"
-        by (metis \<open>(size_bytes >> 3) + 1 < node_size s a && scast (~~ OCC_FLG)\<close> add.commute word_bw_comms(1))
-      then have "8 + 8 * nat (uint (1 + (size_bytes >> 3))) < 8 + 8 * nat (uint (scast (~~ OCC_FLG) && node_size s a))"
+        by (metis \<open>(size_bytes >> 3) + 1 < node_size_masked s a\<close> add.commute word_bw_comms(1))
+      then have "8 + 8 * nat (uint (1 + (size_bytes >> 3))) < 
+                 8 + 8 * nat (uint (scast (~~ OCC_FLG) && node_size s a))"
         using f1 by auto
-      then show "8 + unat ((size_bytes >> 3) + 1) * 8 < 8 + unat (size_C (h_val (hrs_mem (t_hrs_' s)) a) && scast (~~ OCC_FLG)) * 8"
+      thus "8 + unat ((size_bytes >> 3) + 1) * 8 < 8 + unat (node_size_masked s a) * 8"
         by (simp add: add.commute unat_def word_bw_comms(1))
     qed
       
@@ -1590,7 +1357,8 @@ next
       using node_node_size_bound by simp
         
     hence "unat_ptr ?new_next + 8 + unat (?new_next_size * 8) \<le> 
-            (if node_next ?new_s ?new_next \<noteq> NULL then unat_ptr (node_next ?new_s ?new_next) else 2 ^ LENGTH(32))"
+           (if node_next ?new_s ?new_next \<noteq> NULL then unat_ptr (node_next ?new_s ?new_next) 
+            else 2 ^ LENGTH(32))"
       using `?next = node_next ?new_s ?new_next` by presburger
         
     have "nodeFree s a" 
@@ -1611,14 +1379,15 @@ next
       unfolding nodeFree_def Let_def     
     proof-
       have "unat (ptr_val ( a +\<^sub>p 1)) + unat ?node_size_masked * 8 \<le> 2 ^ LENGTH(32)"
-        using `nodeValid s a` nodeValid_node_size_l2 by fast
-      have "\<forall>p \<in> {ptr_val (a +\<^sub>p 1)..+unat ?node_size_masked * size_of TYPE(mem_node_C)}.
+        using `nodeValid s a` nodeValid_node_node_size_upper_bound2' by fast
+      have "\<forall>p \<in> {ptr_val (a +\<^sub>p 1)..+unat ?node_size_masked * SZ_mem_node}.
               snd (hrs_htd (t_hrs_' s) p) = Map.empty" using `nodeFree s a` 
         by (simp add: sable_isa.nodeFree_def)
       with `unat (ptr_val ( a +\<^sub>p 1)) + unat ?node_size_masked * 8 \<le> 2 ^ LENGTH(32)`
-      have 1:"\<forall>p. p \<ge> ptr_val (a +\<^sub>p 1) \<and> unat p < unat_ptr (a +\<^sub>p 1) + unat ?node_size_masked * size_of TYPE(mem_node_C) \<longrightarrow>
+      have 1:
+       "\<forall>p. p\<ge> ptr_val(a +\<^sub>p 1) \<and> unat p < unat_ptr(a +\<^sub>p 1) +unat ?node_size_masked *SZ_mem_node \<longrightarrow>
                 snd (hrs_htd (t_hrs_' s) p) = Map.empty"
-        by (simp add: sable_isa.intvl_no_overflow2) 
+        by (simp add: intvl_no_overflow2) 
           
       {assume "unat_ptr ?new_next + 8 \<ge> 2 ^ LENGTH(32)"
           
@@ -1630,7 +1399,8 @@ next
           by unat_arith
         have "unat_ptr a + 8 + unat (((size_bytes >> 3) + 1) * 8) + 8 \<ge> 2 ^ LENGTH(32)"
           using `unat_ptr ?new_next + 8 \<ge> 2 ^ LENGTH(32)`
-          apply (subst (asm)`unat_ptr a + 8 + unat (((size_bytes >> 3) + 1) * 8) = unat_ptr ?new_next`[THEN sym])
+          apply (subst (asm)`unat_ptr a + 8 + unat(((size_bytes >> 3) + 1) * 8) =unat_ptr ?new_next`
+                 [THEN sym])
           by assumption
         hence "unat_ptr a + 8 + unat (((size_bytes >> 3) + 1) * 8) + 8 = 2 ^ LENGTH(32)"
           using `unat_ptr a + 8 + unat (((size_bytes >> 3) + 1) * 8) + 8 \<le> 2 ^ LENGTH(32)`
@@ -1690,7 +1460,7 @@ next
             
         have "unat_ptr a + 8 < 2 ^ LENGTH(32)"
           apply (insert \<open>nodeValid s a\<close>) 
-          apply (drule nodeValid_node_size_l2_new)
+          apply (drule nodeValid_node_node_size_upper_bound2)
           using `(size_bytes >> 3) + 1  < ?node_size_masked` by unat_arith
         hence "unat_ptr (a +\<^sub>p 1) = unat_ptr a + 8" 
           unfolding ptr_add_def by unat_arith
@@ -1710,16 +1480,17 @@ next
             
         have "unat (((size_bytes >> 3) + 1) * 8) = unat ((size_bytes >> 3) + 1) * 8"
           using `unat ((size_bytes >> 3) + 1) * 8 < 2 ^ LENGTH(32)`
-          by (metis sable_isa.eight_eq_eight unat_mult_lem)
+          by (metis eight_eq_eight unat_mult_lem)
             
         have "unat_ptr ?new_next = unat_ptr a + unat (2 + (size_bytes >>3)) * 8"
           apply (subst `unat (2 + (size_bytes >>3)) = 1 + unat ((size_bytes >>3) + 1)`)
-          apply (subst `unat_ptr a + 8 + unat (((size_bytes >> 3) + 1) * 8) = unat_ptr ?new_next`[THEN sym])
+          apply (subst `unat_ptr a + 8 + unat (((size_bytes >> 3) + 1) * 8) = unat_ptr ?new_next`
+                 [THEN sym])
           apply (subst `unat (((size_bytes >> 3) + 1) * 8) = unat ((size_bytes >> 3) + 1) * 8`) 
           by auto 
             
-        have "unat_ptr (?new_next +\<^sub>p 1) + unat ?new_next_size * size_of TYPE(mem_node_C)
-               = unat_ptr (a +\<^sub>p 1) + unat ?node_size_masked * size_of TYPE(mem_node_C)" 
+        have "unat_ptr (?new_next +\<^sub>p 1) + unat ?new_next_size * SZ_mem_node
+               = unat_ptr (a +\<^sub>p 1) + unat ?node_size_masked * SZ_mem_node" 
           apply (subst `unat_ptr (?new_next +\<^sub>p 1) = unat_ptr ?new_next + 8`)
           apply (subst `unat_ptr ?new_next = unat_ptr a + unat (2 + (size_bytes >>3)) * 8`)
           apply (subst `unat_ptr (a +\<^sub>p 1) = unat_ptr a + 8`)
@@ -1729,22 +1500,23 @@ next
           using `unat ?node_size_masked \<ge> unat (2 + (size_bytes >> 3))`
           by auto
             
-        hence 3: "unat_ptr (?new_next +\<^sub>p 1) + unat (node_size_masked ?new_s ?new_next) * size_of TYPE(mem_node_C)
-                    = unat_ptr (a +\<^sub>p 1) + unat ?node_size_masked * size_of TYPE(mem_node_C)" 
+        hence 3: "unat_ptr (?new_next +\<^sub>p 1) + unat (node_size_masked ?new_s ?new_next) * SZ_mem_node
+                    = unat_ptr (a +\<^sub>p 1) + unat ?node_size_masked * SZ_mem_node" 
           using `?new_next_size = node_size_masked ?new_s ?new_next`
           by argo
             
         hence 4: 
-          "unat_ptr (?new_next +\<^sub>p 1)+ (unat (node_size_masked ?new_s ?new_next))* size_of TYPE(mem_node_C) \<le> 
+          "unat_ptr (?new_next +\<^sub>p 1)+ (unat (node_size_masked ?new_s ?new_next))* SZ_mem_node \<le> 
            2 ^ LENGTH(32)"
-          using \<open>nodeValid s a\<close> nodeValid_node_size_l2 by auto
-        hence "\<forall>p. p \<ge> ptr_val (?new_next +\<^sub>p 1) \<and> 
-                   unat p<unat_ptr (?new_next +\<^sub>p 1) + (unat (node_size_masked ?new_s ?new_next)) * size_of TYPE(mem_node_C) \<longrightarrow> 
-                  p \<ge> ptr_val (a +\<^sub>p 1) \<and> unat p < unat_ptr (a +\<^sub>p 1) + unat ?node_size_masked * size_of TYPE(mem_node_C)"
+          using \<open>nodeValid s a\<close> nodeValid_node_node_size_upper_bound2' by auto
+        hence 
+          "\<forall>p. p \<ge> ptr_val (?new_next +\<^sub>p 1) \<and> 
+               unat p< unat_ptr(?new_next +\<^sub>p 1) +(unat (node_size_masked ?new_s ?new_next)) * SZ_mem_node \<longrightarrow> 
+               p \<ge> ptr_val (a +\<^sub>p 1) \<and> unat p < unat_ptr (a +\<^sub>p 1) + unat ?node_size_masked * SZ_mem_node"
           using  2 3 by force
             
         hence "\<forall>p \<in> array_span (?new_next +\<^sub>p 1) (unat (node_size_masked ?new_s ?new_next)).
-                 p \<ge> ptr_val (a +\<^sub>p 1) \<and> unat p < unat_ptr (a +\<^sub>p 1) + unat ?node_size_masked * size_of TYPE(mem_node_C)"
+                p \<ge> ptr_val (a +\<^sub>p 1) \<and> unat p < unat_ptr (a +\<^sub>p 1) + unat ?node_size_masked * SZ_mem_node"
           using 4 apply clarify          
           apply (drule_tac x=p in intvl_no_overflow2) by blast
         hence "\<forall>p \<in> array_span (?new_next +\<^sub>p 1) (unat (node_size_masked ?new_s ?new_next)).
@@ -1764,7 +1536,8 @@ next
         
     have "nodeValid ?new_s ?new_next" 
       using `unat_ptr ?new_next + 8 + unat (?new_next_size * 8) \<le> 
-            (if node_next ?new_s ?new_next \<noteq> NULL then unat_ptr (node_next ?new_s ?new_next) else 2 ^ LENGTH(32))`
+            (if node_next ?new_s ?new_next \<noteq> NULL then unat_ptr (node_next ?new_s ?new_next) 
+             else 2 ^ LENGTH(32))`
         `c_guard ?new_next`
         `unat (node_size_masked ?new_s ?new_next) * 8 < 2 ^ LENGTH(32)`
         `node_next ?new_s ?new_next \<noteq> NULL \<longrightarrow>(
@@ -1880,7 +1653,7 @@ next
     hence "a \<noteq> ptr_coerce heap" by simp
     hence "(ptr_coerce heap) \<in> set (path s (ptr_coerce heap) a)" 
       using `nodesValid s (ptr_coerce heap)` `reachable s (ptr_coerce heap) a` `a \<noteq> NULL` 
-        nodesValid_reachable_imp_in_path by fast
+        node_reachable_in_path by fast
     hence "(ptr_coerce heap) \<in> set (path ?new_s (ptr_coerce heap) a)"
       using paths_the_same by argo
     hence  "nodeValid ?new_s (ptr_coerce heap)" using new_s_path_nodeValid by fast
@@ -1939,7 +1712,7 @@ proof -
                             snd (hrs_htd (t_hrs_' s) p) = Map.empty"
     unfolding nodeFree_def by auto
   have node_size: "unat_ptr (node +\<^sub>p 1) + unat (?node_size * 8) \<le> 2 ^ len_of (TYPE(32))"
-    using `nodeValid s node`  sable_isa.nodeValid_node_size_l1 by presburger   
+    using `nodeValid s node`  sable_isa.nodeValid_node_node_size_upper_bound' by presburger   
   have "0 \<notin> {ptr_val (node +\<^sub>p 1)..+ unat (?node_size * 8)}"
   proof (rule ccontr)
     assume "\<not> 0 \<notin> {ptr_val (node +\<^sub>p 1)..+ unat (?node_size * 8)}"
@@ -2001,7 +1774,7 @@ proof -
     moreover have "size_bytes < size_bytes + 8"
       using calculation unat_of_nat32 word_bits_conv word_less_nat_alt by fastforce 
     moreover have "(size_bytes >> 3) * 8 + 8 \<ge> size_bytes" 
-      apply (simp add: shiftr3_is_div_8) apply (rule l10)
+      apply (simp add: shiftr3_is_div_8) apply (rule word_div_mult_lower_bound)
       using \<open>unat (8::32 word) = (8::nat)\<close> calculation(2) by linarith simp      
     ultimately have "size_bytes \<le> ?node_size * 8" by auto 
     hence "{ptr_val (ptr_coerce (node +\<^sub>p 1))..+unat size_bytes}
