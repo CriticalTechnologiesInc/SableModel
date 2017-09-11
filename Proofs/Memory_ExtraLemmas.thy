@@ -5,6 +5,9 @@ theory Memory_ExtraLemmas
     "~/Isabelle2016-1/src/HOL/Library/LaTeXsugar"
     
 begin
+  
+lemma contrapos: "(P \<longrightarrow> Q) = (\<not>Q \<longrightarrow> \<not>P)"
+  by blast
 
 lemma unat_add_le: "unat (a + b) \<le> unat (a::('a::len word)) + unat b "
   by unat_arith
@@ -75,7 +78,8 @@ lemma scast_NOT_simp: "(scast (~~(flag :: 32 signed word)) :: word32) = ~~ ((sca
   by simp  
 
     
-(* Unused *)    
+(* Unused *) 
+(*
 lemma c_guard_l1:
   assumes "c_guard (a::('a::mem_type) ptr)"
     "\<not> c_guard (a +\<^sub>p 1)"
@@ -148,6 +152,7 @@ proof -
   qed 
   thus "\<not> c_null_guard b" unfolding c_null_guard_def by auto
 qed
+*)
    
 lemma unat_add_lem_3:
   "unat (a::'a::len word) + unat b + unat c < 2 ^ LENGTH('a) =
@@ -193,5 +198,4 @@ proof -
   ultimately show ?thesis by fast  
 qed
 
-    
 end
