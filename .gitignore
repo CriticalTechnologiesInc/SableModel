@@ -2,3 +2,4 @@ src/
 *.thy~
 *.thy#
 *.marks
+umm_types.txt

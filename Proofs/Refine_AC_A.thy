@@ -3,9 +3,18 @@ imports
   TPM_Corres
 begin
 
+definition trusted_boot :: "nat \<Rightarrow> unit E_monad"
+  where "trusted_boot (i::nat) \<equiv> doE
+      sealed_pp \<leftarrow> (read_passphrase i);
+      pp_auth \<leftarrow> get_authdata;
+      srk_auth \<leftarrow> get_authdata;
+      passphrase \<leftarrow> unseal_passphrase srk_auth pp_auth sealed_pp;
+      returnOk ()
+    odE"
+       
 context sable_m
 begin
-
+  
 lemma read_passphrase_corres:
   "corres (R_STORED_DATA_rel string_rel) \<top> \<top> (read_passphrase i) (read_passphrase' (of_nat i))"
   (is "corres ?r _ _ _ _")
@@ -82,8 +91,232 @@ proof simp
   next show"\<lbrace>\<lambda>_. True\<rbrace> ?read' \<lbrace>\<lambda>_ _. True\<rbrace>" by (rule hoare_post_taut)
   qed
 qed
+        
+lemma ERROR_rel_imp_error_not_none_TPM_STORED_DATA12:
+  "ERROR_rel x1 (error_C (TPM_STORED_DATA12_exception_C.exception_C rv'))
+    \<Longrightarrow> error_C (TPM_STORED_DATA12_exception_C.exception_C rv') \<noteq> NONE"
+  unfolding ERROR_rel_def by auto
+    
+lemma ERROR_rel_imp_error_not_none_TPM_AUTHDATA:
+  "ERROR_rel x1 (error_C (TPM_AUTHDATA_exception_C.exception_C rv'))
+    \<Longrightarrow> error_C (TPM_AUTHDATA_exception_C.exception_C rv') \<noteq> NONE"
+  unfolding ERROR_rel_def by blast
+    
+lemma ERROR_rel_imp_error_not_none_CSTRING:
+  "ERROR_rel x1 (error_C (CSTRING_exception_C.exception_C rv'))
+    \<Longrightarrow> error_C (CSTRING_exception_C.exception_C rv') \<noteq> NONE"
+  unfolding ERROR_rel_def by blast
+        
+lemma extract_assms_from_corres:
+  "(!s. P s \<longrightarrow> Assm ) \<Longrightarrow> (!s. P' s \<longrightarrow> Assm') \<Longrightarrow> Assm \<and> Assm' \<longrightarrow> corres rrel P P' m m' \<Longrightarrow> 
+   corres rrel P P' m m'"
+  by (metis corres_req)
+    
+lemma simp_if_inside_independent_lambda: 
+  "(if p then f else g) = (\<lambda> s. if p then f s else g s)" 
+  by simp
+  
+(* convenience lemmas for dealing with exception monad results in correspondence proofs,
+  they turned out uglier than I'd hoped*)
+lemma simplifyExMonad_TPM_AUTHDATA:"returnExRel_TPM_AUTHDATA rv rv' \<and>
+  (\<forall>rvOk. (rv = Inr rvOk \<and> error_C (TPM_AUTHDATA_exception_C.exception_C rv') = 0 \<longrightarrow>
+   corres rrel G G' (m rvOk) m')) \<Longrightarrow>
+   \<forall> error error' ss'. ERROR_rel error (tdEXCEPTION_C.error_C  error')
+    \<longrightarrow>  rrel (Inl error) ((tdRESULT_C error'), ss')  \<Longrightarrow>
+  corres rrel G G' 
+    (case rv of Inl e \<Rightarrow> throwError e  | Inr v' \<Rightarrow> m v')
+    (\<lambda>s. if error_C (TPM_AUTHDATA_exception_C.exception_C rv') \<noteq> 0
+             then return (tdRESULT_C.exception_C_update  (\<lambda>a. TPM_AUTHDATA_exception_C.exception_C rv') rv'Base) s 
+             else m' s)"
+  apply (auto split:sum.split) 
+    apply (frule ERROR_rel_imp_error_not_none_TPM_AUTHDATA)
+  unfolding NONE_def
+proof auto
+  fix rrel rv rv' G G' rv'Base
+  fix x1 
+  assume the_error_rel:"ERROR_rel x1 (error_C (TPM_AUTHDATA_exception_C.exception_C rv'))"
+    and error_rel_imp_rrel:"\<forall>error error'.
+             ERROR_rel error (error_C error') \<longrightarrow>
+             (\<forall>ss'. rrel (Inl error) (tdRESULT_C error', ss'))" 
+    and "rv = Inl x1"
+  have 0:"tdRESULT_C (TPM_AUTHDATA_exception_C.exception_C rv') = 
+          (tdRESULT_C.exception_C_update (\<lambda>a. TPM_AUTHDATA_exception_C.exception_C rv') rv'Base)"
+    by (metis tdRESULT_C_accupd_same tdRESULT_C_idupdates(1))
+  have "corres_underlying UNIV False True rrel G G' (throwError x1)
+           (return (tdRESULT_C (TPM_AUTHDATA_exception_C.exception_C rv')))"
+    by (simp add: error_rel_imp_rrel the_error_rel throwError_def) 
+  thus "error_C (TPM_AUTHDATA_exception_C.exception_C rv') \<noteq> 0 \<Longrightarrow>
+          corres_underlying UNIV False True rrel G G' (throwError x1)
+           (return
+             (tdRESULT_C.exception_C_update (\<lambda>a. TPM_AUTHDATA_exception_C.exception_C rv') rv'Base))"
+    apply (subst 0[THEN sym]) by simp
+qed
+  
+lemma simplifyExMonad_CSTRING:"returnExRel_CSTRING rv rv' \<and>
+  (\<forall> rvOk. (rv = Inr rvOk \<and> error_C (CSTRING_exception_C.exception_C rv') = 0 \<longrightarrow>
+   corres rrel G G' (m rvOk) m'))\<and>
+    (\<forall> error error' ss'. ERROR_rel error (tdEXCEPTION_C.error_C  error')
+      \<longrightarrow>  rrel (Inl error) ((tdRESULT_C error'), ss')) \<Longrightarrow>
+   \<forall> error error' ss'. ERROR_rel error (tdEXCEPTION_C.error_C  error')
+    \<longrightarrow>  rrel (Inl error) ((tdRESULT_C error'), ss')  \<Longrightarrow>
+  corres rrel G G' 
+    (case rv of Inl e \<Rightarrow> throwError e  | Inr v' \<Rightarrow> m v')
+    (\<lambda>s. if error_C (CSTRING_exception_C.exception_C rv') \<noteq> 0
+             then return (tdRESULT_C.exception_C_update  (\<lambda>a. CSTRING_exception_C.exception_C rv') rv'Base) s 
+             else m' s)"
+  apply (auto split:sum.split) 
+    apply (frule ERROR_rel_imp_error_not_none_CSTRING)
+  unfolding NONE_def
+proof auto
+  fix rrel rv rv' G G' rv'Base
+  fix x1 
+  assume the_error_rel:"ERROR_rel x1 (error_C (CSTRING_exception_C.exception_C rv'))"
+    and error_rel_imp_rrel:"\<forall>error error'.
+             ERROR_rel error (error_C error') \<longrightarrow>
+             (\<forall>ss'. rrel (Inl error) (tdRESULT_C error', ss'))" 
+    and "rv = Inl x1"
+  have 0:"tdRESULT_C (CSTRING_exception_C.exception_C rv') = 
+          (tdRESULT_C.exception_C_update (\<lambda>a. CSTRING_exception_C.exception_C rv') rv'Base)"
+    by (metis tdRESULT_C_accupd_same tdRESULT_C_idupdates(1))
+  have "corres_underlying UNIV False True rrel G G' (throwError x1)
+           (return (tdRESULT_C (CSTRING_exception_C.exception_C rv')))"
+    by (simp add: error_rel_imp_rrel the_error_rel throwError_def) 
+  thus "error_C (CSTRING_exception_C.exception_C rv') \<noteq> 0 \<Longrightarrow>
+          corres_underlying UNIV False True rrel G G' (throwError x1)
+           (return
+             (tdRESULT_C.exception_C_update (\<lambda>a. CSTRING_exception_C.exception_C rv') rv'Base))"
+    apply (subst 0[THEN sym]) by simp
+qed
+  
+lemma simplifyExMonad_TPM_STORED_DATA12:"
+   returnExRel_TPM_STORED_DATA12 rv rv' \<and>
+  (\<forall>rvOk .(rv = Inr rvOk \<longrightarrow> error_C (TPM_STORED_DATA12_exception_C.exception_C rv') = 0 \<longrightarrow>
+     corres rrel G G' (m rvOk) m'))  \<and>
+    (\<forall> error error' ss'. ERROR_rel error (tdEXCEPTION_C.error_C  error')
+      \<longrightarrow>  rrel (Inl error) ((tdRESULT_C error'), ss')) \<Longrightarrow>
+  corres rrel G G' 
+    (case rv of Inl e \<Rightarrow> throwError e  | Inr rvOk \<Rightarrow> m rvOk)
+    (\<lambda>s. if error_C (TPM_STORED_DATA12_exception_C.exception_C rv') \<noteq> 0
+             then return (tdRESULT_C.exception_C_update  (\<lambda>a. TPM_STORED_DATA12_exception_C.exception_C rv') rv'Base) s 
+             else m' s)"
+  apply (auto split:sum.split) 
+    apply (frule ERROR_rel_imp_error_not_none_TPM_STORED_DATA12)
+  unfolding NONE_def
+proof auto
+  fix rrel rv rv' G G' rv'Base
+  fix x1 
+  assume the_error_rel:"ERROR_rel x1 (error_C (TPM_STORED_DATA12_exception_C.exception_C rv'))"    
+    and  error_rel_imp_rrel:"\<forall>error error'. ERROR_rel error (error_C error') \<longrightarrow>
+          (\<forall>ss'. rrel (Inl error) (tdRESULT_C error', ss'))"       
+    and "rv = Inl x1"        
+    and "error_C (TPM_STORED_DATA12_exception_C.exception_C rv') \<noteq> 0"
+  have 0:"tdRESULT_C (TPM_STORED_DATA12_exception_C.exception_C rv') = 
+          (tdRESULT_C.exception_C_update (\<lambda>a. TPM_STORED_DATA12_exception_C.exception_C rv') rv'Base)"
+    by (metis tdRESULT_C_accupd_same tdRESULT_C_idupdates(1))
+  have "corres_underlying UNIV False True rrel G G' (throwError x1)
+           (return (tdRESULT_C (TPM_STORED_DATA12_exception_C.exception_C rv')))"
+    by (simp add: error_rel_imp_rrel the_error_rel throwError_def) 
+  thus "corres_underlying UNIV False True rrel G G' (throwError x1)
+           (return
+             (tdRESULT_C.exception_C_update (\<lambda>a. TPM_STORED_DATA12_exception_C.exception_C rv')
+               rv'Base))" 
+    apply (subst 0[THEN sym]) by simp
+qed
+  
+lemma top_top_top: "\<top> = (\<top> and \<top>)" by simp
+lemma x_eq_x_and_top : "x = (x and \<top>)" by simp
+lemma x_eq_top_and_x :"x = (\<top> and x)" by simp
+lemma x_eq_x_and_x : "x = (x and x)" by auto
 
-(*lemma refines: "AC_minimal \<sqsubseteq> A_minimal"
+lemma trusted_boot_corres:
+  "corres (\<lambda> r (r',t'). RESULT_rel r r') \<top> \<top> (trusted_boot idx) (trusted_boot' (of_nat idx))"
+  unfolding trusted_boot_def trusted_boot'_def lift_def condition_def
+  apply (rule corres_add_noop_lhs)
+  apply (subst (1 2) top_top_top)
+  apply (rule corres_split[where R'="\<lambda> r' s'. r' = tdRESULT_C (tdEXCEPTION_C NONE)"])
+     defer
+     apply (auto)
+   apply(rule hoare_return_post[where P="\<top>",simplified])
+  apply (subst (1) top_top_top)
+  apply(subst (7) x_eq_top_and_x)
+  unfolding bindE_def
+  apply (rule corres_split)
+     defer
+     prefer 3
+     apply (rule hoare_vcg_prop)
+    apply (rule read_passphrase_corres)
+   apply (rule hoare_post_taut)
+  unfolding lift_def
+  apply auto
+  apply (rename_tac result' sealed_pp sealed_pp')
+  apply (rule_tac  Assm=True and  Assm'="returnExRel_TPM_STORED_DATA12 sealed_pp sealed_pp'"
+      in extract_assms_from_corres)
+    apply auto
+   apply (rule R_STORED_DATA_rel_lemma, simp)
+  apply (rule simplifyExMonad_TPM_STORED_DATA12)
+  apply (auto simp:NONE_def)
+   defer
+   apply(unfold RESULT_rel_def)[1]
+   apply auto
+  apply(rule_tac Assm=True and Assm'="result' = tdRESULT_C (tdEXCEPTION_C 0)"
+      in extract_assms_from_corres)
+    apply auto
+  apply (rename_tac sealed_pp_val)  
+  apply (subst (1)top_top_top)
+  apply (subst (7)x_eq_top_and_x)
+  apply (rule corres_split)
+     defer
+     apply (rule get_authdata_corres)
+    apply (rule hoare_post_taut)+
+  apply (rename_tac pp_auth pp_auth')
+  apply (rule_tac Assm=True and Assm'="R_AUTHDATA_rel pp_auth pp_auth'"
+      in extract_assms_from_corres)
+    apply auto
+  apply (rule simplifyExMonad_TPM_AUTHDATA)           
+   apply auto
+    apply (rule R_AUTHDATA_rel_lemma, simp)
+   apply (subst (1)top_top_top)
+   apply (subst (7)x_eq_top_and_x)
+   apply (rule corres_split)
+      defer
+      apply (rule get_authdata_corres)
+     apply (rule hoare_post_taut)+
+   apply (unfold RESULT_rel_def)[1] apply auto
+  apply(rename_tac pp_auth_val srk_auth srk_auth')
+  apply (rule_tac Assm=True and Assm' = "R_AUTHDATA_rel srk_auth srk_auth'"
+      in extract_assms_from_corres)
+    apply auto
+  apply (rule simplifyExMonad_TPM_AUTHDATA)
+   defer
+   apply (unfold RESULT_rel_def)[1]
+   apply auto
+   apply (rule R_AUTHDATA_rel_lemma,simp)             
+  apply (subst (1)top_top_top)
+  apply (subst (7)x_eq_top_and_x)
+  apply (rule corres_split)
+     defer defer
+     apply (rule hoare_post_taut)+           
+   defer
+   apply (rule unseal_passphrase_corres) 
+  using R_AUTHDATA_rel_def apply force
+  using R_AUTHDATA_rel_def apply force
+  apply(rename_tac srk_auth'_value rv rv')
+  apply (rule_tac Assm=True and Assm'="returnExRel_CSTRING rv rv'"
+      in extract_assms_from_corres)
+    apply safe
+   apply (rule R_cstring_rel_lemma, simp)
+  apply (subst  if_distrib[of return _ _])
+  apply (subst simp_if_inside_independent_lambda)
+  apply(rule simplifyExMonad_CSTRING)
+   defer
+   apply (unfold RESULT_rel_def)[1]
+   apply auto
+  unfolding RESULT_rel_def 
+   apply (simp add: returnOk_def2) 
+  by (simp add: returnOk_def2)
+    
+    
+    (*lemma refines: "AC_minimal \<sqsubseteq> A_minimal"
 proof (rule sim_imp_refines)
   have "A_minimal \<Turnstile> I\<^sub>A" unfolding I\<^sub>A_def by auto
   moreover have "AC_minimal \<Turnstile> I\<^sub>C" unfolding I\<^sub>C_def by auto

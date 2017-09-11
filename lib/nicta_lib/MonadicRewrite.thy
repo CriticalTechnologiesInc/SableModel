@@ -102,7 +102,7 @@ proof -
     apply (clarsimp simp: monadic_rewrite_def bind_def P image_constant_conv
                     cong: image_cong)
     apply (drule empty_failD2[OF ef])
-    apply (clarsimp simp: prod_eq_iff split: split_if_asm)
+    apply (clarsimp simp: prod_eq_iff split: if_split_asm)
     done
 qed
 
@@ -173,17 +173,13 @@ lemma monadic_rewrite_gen_asm:
 lemma monadic_rewrite_assert:
   "\<lbrakk> Q \<Longrightarrow> monadic_rewrite True E P (f ()) g \<rbrakk>
       \<Longrightarrow> monadic_rewrite True E (\<lambda>s. Q \<longrightarrow> P s) (assert Q >>= f) g"
-  apply (simp add: assert_def split: split_if)
+  apply (simp add: assert_def split: if_split)
   apply (simp add: monadic_rewrite_def fail_def)
   done
 
 lemma monadic_rewrite_drop_modify:
   "monadic_rewrite F E (\<lambda>s. f s = s) (modify f >>= v) (v ())"
   by (simp add: monadic_rewrite_def bind_def simpler_modify_def)
-
-lemma empty_failD3:
-  "\<lbrakk> empty_fail f; \<not> snd (f s) \<rbrakk> \<Longrightarrow> fst (f s) \<noteq> {}"
-  by (drule(1) empty_failD2, clarsimp)
 
 lemma monadic_rewrite_symb_exec_r:
   "\<lbrakk> \<And>s. \<lbrace>op = s\<rbrace> m \<lbrace>\<lambda>r. op = s\<rbrace>; no_fail P' m;
@@ -367,11 +363,11 @@ lemma monadic_rewrite_gets_the_walk:
    apply (rule monadic_rewrite_trans)
     apply (erule(1) monadic_rewrite_bind_tail)
    apply (simp add: gets_the_def bind_assoc)
-   apply (rule monadic_rewrite_symb_exec_r, wp)
+   apply (rule monadic_rewrite_symb_exec_r, wp+)
     apply (rule monadic_rewrite_trans)
      apply (rule monadic_rewrite_bind_tail)
       apply (rule_tac rv=rv in monadic_rewrite_symb_exec_l_known,
-             wp empty_fail_gets)
+             (wp empty_fail_gets)+)
        apply (rule monadic_rewrite_refl)
       apply wp
      apply assumption

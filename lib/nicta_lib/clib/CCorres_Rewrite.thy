@@ -17,6 +17,10 @@ imports
   "Corres_UL_C"
 begin
 
+(* C_simp rules may be applied repeatedly.
+   The result of a C_simp_final simplification will not be simplified further.
+   For example, use C_simp_final when the RHS matches the LHS. *)
+
 named_theorems C_simp
 
 context
@@ -130,7 +134,7 @@ lemma com_eq_Cond_empty [C_simp]:
   unfolding com_eq_def
   by (clarsimp, case_tac s, auto intro: exec.CondFalse elim!: exec_elim_cases)
 
-lemma com_eq_Cond_univ [C_simp]:
+lemma com_eq_Cond_UNIV [C_simp]:
   "c \<sim> c' \<Longrightarrow> Cond UNIV c c2 \<sim> c'"
   unfolding com_eq_def
   by (clarsimp, case_tac s, auto intro: exec.CondTrue  elim!: exec_elim_cases)
@@ -151,7 +155,7 @@ lemma com_eq_If_False [C_simp]:
 
 lemma com_eq_If_True [C_simp]:
   "c \<sim> c' \<Longrightarrow> IF True THEN c ELSE c2 FI \<sim> c'"
-  by (simp add: com_eq_Cond_univ)
+  by (simp add: com_eq_Cond_UNIV)
 
 lemma com_eq_While_empty [C_simp]:
   "While {} c \<sim> Skip"
@@ -162,10 +166,23 @@ lemma com_eq_While_FALSE [C_simp]:
   "WHILE False INV P DO c OD \<sim> Skip"
   by (simp add: com_eq_While_empty whileAnno_def)
 
-lemma com_eq_Guard_univ [C_simp]:
+lemma com_eq_Guard_UNIV [C_simp]:
   "c \<sim> c' \<Longrightarrow> Guard f UNIV c \<sim> c'"
   unfolding com_eq_def
   by (clarsimp, case_tac s, auto intro: exec.Guard elim!: exec_elim_cases)
+
+lemma com_eq_Guard_True [C_simp]:
+  "c \<sim> c' \<Longrightarrow> Guard f \<lbrace>True\<rbrace> c \<sim> c'"
+  by (clarsimp simp: com_eq_Guard_UNIV)
+
+lemma com_eq_Guard_empty [C_simp]:
+  "Guard f {} c \<sim> Guard f {} Skip"
+  unfolding com_eq_def
+  by (clarsimp, case_tac s, auto intro: exec.GuardFault elim!: exec_elim_cases)
+
+lemma com_eq_Guard_False [C_simp]:
+  "Guard f \<lbrace>False\<rbrace> c \<sim> Guard f {} Skip"
+  by (clarsimp simp: com_eq_Guard_empty)
 
 lemma com_eq_Catch_Skip [C_simp]:
   "Catch Skip c \<sim> Skip"
@@ -185,21 +202,26 @@ lemma com_eq_Throw [C_simp]:
 end
 
 
-(* First introduces com_eq goal, then tries repeat application of, in this order:
-    - actual rewrite rules, 
-    - propagation rules, 
-    - com_eq_refl if nothing else works.
+(* First introduces com_eq goal (rule cccorres_com_eqI), then breaks the term into
+   its component parts (ccorres_rewrite_decompose), and finally reassembles,
+   applying simplification rules whenever possible, and otherwise applying reflexivity.
 
-   Needs top-level repetition because a terminal step that introduces e.g. Skip does not
-   necessarily participate in further rewrites.
+   At every decomposition or simplification step, we first apply a transitivity rule,
+   to ensure we can continue simplifying each subterm until no more simplifications
+   are possible, before applying reflexivity to reassemble the enclosing term.
 
    Limited to unconditional rewrite rules. Purpose is not to provide a real rewriting engine,
    just to get rid of annoying Skip and Cond {} bits that come from config options or macros.
 *)
-method ccorres_rewrite declares C_simp =
-  (changed \<open>rule ccorres_com_eqI, 
-            determ \<open>repeat_new \<open>determ \<open>rule C_simp ccorres_rewrite_splits com_eq_refl\<close>\<close>\<close>\<close>)+
 
+method ccorres_rewrite_decompose =
+  (rule com_eq_trans, (rule ccorres_rewrite_splits; ccorres_rewrite_decompose)?)
+
+method ccorres_rewrite_recombine declares C_simp =
+  determ \<open>rule C_simp com_eq_refl\<close>
+
+method ccorres_rewrite declares C_simp =
+  changed \<open>rule ccorres_com_eqI, ccorres_rewrite_decompose, ccorres_rewrite_recombine+\<close>
 
 (* Example *)
 lemma
@@ -210,16 +232,65 @@ lemma
                              Skip;; 
                              (IF False THEN Skip ELSE SKIP;; TRY THROW CATCH c3 END FI;; SKIP))"
   apply ccorres_rewrite              (* c;; c;; c2;; c3 *)
+  apply (match conclusion in "ccorres_underlying sr \<Gamma> r xf r' xf' P P' hs H (c;;c;;c2;;c3)" \<Rightarrow> \<open>-\<close>)
   apply (ccorres_rewrite C_simp: c3) (* c;; c;; c2;; c *)
+  apply (match conclusion in "ccorres_underlying sr \<Gamma> r xf r' xf' P P' hs H (c;;c;;c2;;c)" \<Rightarrow> \<open>-\<close>)
   apply (ccorres_rewrite C_simp: c)  (* c;; c2;; c *)
-  apply ccorres_rewrite?             (* fails if nothing changes *)
+  apply (match conclusion in "ccorres_underlying sr \<Gamma> r xf r' xf' P P' hs H (c;;c2;;c)" \<Rightarrow> \<open>-\<close>)
+  apply (fails \<open>ccorres_rewrite\<close>)    (* fails if nothing changes *)
   oops
 
 (* Test for WHILE (whileAnno) case *)
-lemma
-  shows "ccorres_underlying sr \<Gamma> r xf r' xf' P P' hs H
-         (WHILE b DO Guard f g c;; IF False THEN c2 FI OD;; SKIP)"
+lemma "ccorres_underlying sr \<Gamma> r xf r' xf' P P' hs H
+        (WHILE b DO Guard f g c;; IF False THEN c2 FI OD;; SKIP)"
   apply ccorres_rewrite
+  apply (match conclusion in "ccorres_underlying sr \<Gamma> r xf r' xf' P P' hs H
+                                (WHILE b DO Guard f g c OD)" \<Rightarrow> \<open>-\<close>)
+  oops
+
+(* Test that simplification works down all branches of the term. *)
+lemma "ccorres_underlying sr \<Gamma> r xf r' xf' P P' hs H
+           (IF b THEN
+              (SKIP ;; c) ;; (SKIP ;; IF True THEN SKIP ELSE c FI)
+            ELSE
+              (SKIP ;; SKIP) ;; (Guard f UNIV c ;; SKIP)
+            FI)"
+  apply ccorres_rewrite
+  apply (match conclusion in "ccorres_underlying sr \<Gamma> r xf r' xf' P P' hs H c" \<Rightarrow> \<open>-\<close>)
+  oops
+
+(* Test that complex simplification rules work. *)
+context begin
+
+private lemma com_eq_Cond_redundant:
+  "com_eq \<Gamma> (IF b THEN c1 ELSE IF b THEN c2 ELSE c3 FI FI) (IF b THEN c1 ELSE c3 FI)"
+  unfolding com_eq_def
+  by (auto intro: exec.CondTrue exec.CondFalse elim!: exec_elim_cases)
+
+private lemma "ccorres_underlying sr \<Gamma> r xf r' xf' P P' hs H
+                (SKIP ;;
+                 IF b THEN
+                   (SKIP ;; c1) ;; (SKIP ;; SKIP)
+                 ELSE
+                   IF b THEN
+                     IF b1 THEN c2 ELSE c2 FI
+                   ELSE
+                     WHILE False DO c4 OD ;; (c3 ;; SKIP)
+                   FI
+                 FI)"
+  apply (ccorres_rewrite C_simp: com_eq_Cond_redundant)
+  apply (match conclusion in "ccorres_underlying sr \<Gamma> r xf r' xf' P P' hs H
+                                (IF b THEN c1 ELSE c3 FI)" \<Rightarrow> \<open>-\<close>)
+  oops
+
+end
+
+(* Test False guard avoids looping. *)
+lemma "ccorres_underlying sr \<Gamma> r xf r' xf' P P' hs H
+        (SKIP ;; Guard f {} (IF b THEN c ELSE c FI) ;; SKIP)"
+  apply ccorres_rewrite
+  apply (match conclusion in "ccorres_underlying sr \<Gamma> r xf r' xf' P P' hs H
+                                (Guard f {} SKIP)" \<Rightarrow> \<open>-\<close>)
   oops
 
 end

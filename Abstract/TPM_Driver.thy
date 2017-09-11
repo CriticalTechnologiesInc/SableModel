@@ -31,7 +31,7 @@ where
         sessions := update_Session (sessions s) (TPM.OIAP_out.authHandle response)
           \<lparr> nonceEven = TPM.OIAP_out.nonceEven response,
             nonceOdd = nOdd,
-            continue = csession
+            continueSession = csession
           \<rparr>
         \<rparr>)
       od
@@ -53,12 +53,12 @@ where
                   inAuthSetupParams' \<leftarrow> return [DIGEST_dig inParamDigest,             (* 1H1*)
                                                 NONCE_dig (Session.nonceEven session),(* 2H1 *)
                                                 NONCE_dig (Session.nonceOdd session), (* 3H1 *)
-                                                bool_dig (Session.continue session)]; (* 4H1 *)
+                                                bool_dig (Session.continueSession session)]; (* 4H1 *)
                   inAuthSetupParams \<leftarrow> return (hmac (snd a) inAuthSetupParams');
                   return (Some \<lparr>
                     Auth_in.authHandle = (fst a),
                     Auth_in.nonceOdd = Session.nonceOdd session,
-                    Auth_in.continueAuthSession = Session.continue session,
+                    Auth_in.continueAuthSession = Session.continueSession session,
                     Auth_in.auth = inAuthSetupParams
                   \<rparr>)
                 od);

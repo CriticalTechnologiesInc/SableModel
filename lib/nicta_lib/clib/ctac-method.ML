@@ -123,6 +123,10 @@ val ctac_post_del = Thm.declaration_attribute
                     (fn thm =>
                         (ctac_post.map (Thm.del_thm thm)));
 
+val ceqv_simpl_sequence_pair = Attrib.config_bool
+    @{binding ceqv_simpl_sequence} (K false)
+fun ceqv_simpl_seq ctxt = Config.get ctxt (fst ceqv_simpl_sequence_pair)
+
 val setup =
   Attrib.setup @{binding "corres"} (Attrib.add_del ctac_add ctac_del)
     "correspondence rules"
@@ -131,7 +135,8 @@ val setup =
     "correspondence preprocessing rules"
   #> Attrib.setup @{binding "corres_post"}
     (Attrib.add_del ctac_post_add ctac_post_del)
-    "correspondence postprocessing rules";
+    "correspondence postprocessing rules"
+  #> snd ceqv_simpl_sequence_pair;
 
 (* tacticals *)
 
@@ -327,13 +332,19 @@ val ceqv_xpres_eq_If_rules = @{thms ceqv_xpres_eq_If_rules};
 
 val apply_ceqv_xpres_rules_trace = ref @{term True};
 
-fun apply_ceqv_xpres_rules ctxt _ n = DETERM
-  (resolve_tac ctxt ceqv_xpres_rules n
+fun apply_ceqv_xpres_rules1 ctxt rules _ n = DETERM
+  (resolve_tac ctxt rules n
      ORELSE (SUBGOAL (fn (t, n) =>
           (warning ("apply_ceqv_xpres_rules: no rule applied"
                      ^ " - see CtacImpl.apply_ceqv_xpres_rules_trace");
              apply_ceqv_xpres_rules_trace := t;
              resolve_tac ctxt [ceqv_xpres_FalseI] n)) n));
+
+fun apply_ceqv_xpres_rules ctxt = let
+    val seq = ceqv_simpl_seq ctxt
+    val ex_rules = if seq then [@{thm ceqv_xpres_While_simpl_sequence}]
+        else []
+  in apply_ceqv_xpres_rules1 ctxt (ex_rules @ ceqv_xpres_rules) end
 
 fun addcongs thms ss = foldl (uncurry Simplifier.add_cong) ss thms
 fun delsplits thms ss = foldl (uncurry Splitter.del_split) ss thms
@@ -590,19 +601,24 @@ fun substp_never _ = false
 type cinit_opts = {
      subst_asms : term -> bool,  (* subst assumptions or not *)
      ignore_call : bool,         (* use call_ignore_cong or not *)
+     ccorres_rewrite : bool,     (* perform ccorres_rewrite or not *)
      trace : trace_opts          (* debug or not *)
 }
 
-val default_cinit_opts : cinit_opts = { trace = default_trace_opts, subst_asms = substp_is_eq, ignore_call = true}
+val default_cinit_opts : cinit_opts =
+    {trace = default_trace_opts, subst_asms = substp_is_eq, ccorres_rewrite = true, ignore_call = true}
 
-fun cinit_opts_subst_update new_subst_asms {subst_asms, ignore_call, trace} =
-    {subst_asms = new_subst_asms subst_asms, ignore_call = ignore_call, trace = trace}
+fun cinit_opts_subst_update new_subst_asms {subst_asms, ignore_call, ccorres_rewrite, trace} =
+    {subst_asms = new_subst_asms subst_asms, ignore_call = ignore_call, ccorres_rewrite = ccorres_rewrite, trace = trace}
 
-fun cinit_opts_call_update new_ignore_call {subst_asms, ignore_call, trace} =
-    {subst_asms = subst_asms, ignore_call = new_ignore_call ignore_call, trace = trace}
+fun cinit_opts_call_update new_ignore_call {subst_asms, ignore_call, ccorres_rewrite, trace} =
+    {subst_asms = subst_asms, ignore_call = new_ignore_call ignore_call, ccorres_rewrite = ccorres_rewrite, trace = trace}
 
-fun cinit_opts_trace_update new_trace {subst_asms, ignore_call, trace} =
-    {subst_asms = subst_asms, ignore_call = ignore_call, trace = new_trace trace}
+fun cinit_opts_ccorres_rewrite_update new_ccorres_rewrite {subst_asms, ignore_call, ccorres_rewrite, trace} =
+    {subst_asms = subst_asms, ignore_call = ignore_call, ccorres_rewrite = new_ccorres_rewrite ccorres_rewrite, trace = trace}
+
+fun cinit_opts_trace_update new_trace {subst_asms, ignore_call, ccorres_rewrite, trace} =
+    {subst_asms = subst_asms, ignore_call = ignore_call, ccorres_rewrite = ccorres_rewrite, trace = new_trace trace}
 
 fun ccorres_doit (opts : ctac_opts)
                  (depth : int)
@@ -909,6 +925,10 @@ fun corres_boilerplate_tac opts unfold_haskell_p xfs ctxt = let
                 end
             else
                 (fn _ => all_tac)
+
+        val ccorres_rewrite_tac = Method.NO_CONTEXT_TACTIC ctxt
+            (Method_Closure.apply_method ctxt @{method "ccorres_rewrite"} [] [] [] ctxt [])
+
         val ss = simpset_of (ctxt delsimps boilerplace_simp_dels |> addcongs
                  (if #ignore_call opts then call_ignore_cong else []))
     in
@@ -924,6 +944,8 @@ fun corres_boilerplate_tac opts unfold_haskell_p xfs ctxt = let
                          REPEAT_DETERM' (resolve_tac ctxt ccorres_rhs_assoc),
                          (* Simplify bodies, ignoring parts of calls *)
                          TRY' (asm_full_simp_tac (put_simpset ss ctxt)),
+                         (* Simplify, using ccorres_rewrite *)
+                         TRY' (fn _ => if #ccorres_rewrite opts then ccorres_rewrite_tac else all_tac),
                          (* Lift any variables *)
                          EVERY' (map (corres_pre_lift_tac "ccorres_init_tmp_lift2" trace depth' ctxt) (rev xfs)),
                          (* Substitute any lifted variable equalities.  The option is the predicate to use on assumptions *)
@@ -962,6 +984,12 @@ val use_vcgN = "use_vcg" (* default *)
 
 val c_linesN = "c_lines"
 
+val ccorres_rewriteN = "ccorres_rewrite" (* default *)
+val no_ccorres_rewriteN = "no_ccorres_rewrite"
+
+val C_simpN = "C_simp"
+val C_simpThm = @{named_theorems "C_simp"}
+
 (* val auto_vcgN = "auto_vcg" *)
 
 fun thm_mod_add_del_only name att_add att_del att_clear =
@@ -983,8 +1011,13 @@ val ctac_modifiers =
 val csymbr_modifiers =
     Simplifier.simp_modifiers
 
+val C_simp_add = Thm.declaration_attribute (Named_Theorems.add_thm C_simpThm)
+val C_simp_del = Thm.declaration_attribute (Named_Theorems.del_thm C_simpThm)
+val C_simp_clear = Named_Theorems.clear C_simpThm
+
 val boilerplate_modifiers =
     Simplifier.simp_modifiers
+    @ thm_mod_add_del_only C_simpN C_simp_add C_simp_del C_simp_clear
 
 structure P = Parse;
 
@@ -1008,6 +1041,7 @@ val cinit_options =
      Args.$$$ subst_asm_varsN >> K (cinit_opts_subst_update (K substp_is_var_eq)),
      Args.$$$ ignore_callN >> K (cinit_opts_call_update (K true)),
      Args.$$$ no_ignore_callN >> K (cinit_opts_call_update (K false)),
+     Args.$$$ no_ccorres_rewriteN >> K (cinit_opts_ccorres_rewrite_update (K false)),
      Args.$$$ trace_allN >> K (cinit_opts_trace_update (K all_trace_opts)),
      Args.$$$ trace_ceqvN >> K (cinit_opts_trace_update set_ceqv_trace_opts)]
 

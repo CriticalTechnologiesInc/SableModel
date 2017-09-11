@@ -16,7 +16,11 @@ abbreviation "corres \<equiv> corres_underlying SR False True"
 
 end
 
-locale sable_m = sable_isa (*+
+consts unseal_passphrase :: 
+  "TPM.AUTHDATA \<Rightarrow> TPM.AUTHDATA \<Rightarrow> string TPM.STORED_DATA
+     \<Rightarrow>  (string TPM.STORED_DATA) E_monad"
+
+locale sable_m = sable_isa +
   assumes get_authdata_corres: "corres (\<lambda>r r'. R_AUTHDATA_rel r (fst r'))
                                   \<top> \<top> get_authdata get_authdata'"
 
@@ -27,7 +31,10 @@ locale sable_m = sable_isa (*+
 
       and TPM_OIAP_corres: "\<And>sess'. corres (\<lambda>r r'. RESULT_rel r (fst r'))
           \<top> (\<lambda>s'. is_valid_tdTPM_SESSION_C'ptr s' sess') TPM_OIAP (TPM_OIAP' sess')"
-
+      and unseal_passphrase_corres: 
+        "AUTHDATA_rel a1 a'1 \<Longrightarrow> AUTHDATA_rel a2 a'2 \<Longrightarrow>
+        corres R_cstring_rel \<top> \<top> (unseal_passphrase a1 a2 sd) (unseal_passphrase' a'1 a'2 sd')" 
+  
       and no_fail_unpack_TPM_STORED_DATA12':
         "\<And>P d dSize. no_fail P (unpack_TPM_STORED_DATA12' d dSize)"
 
@@ -35,8 +42,7 @@ locale sable_m = sable_isa (*+
       and TPM_NV_ReadValue_corres: "\<And>P P' idx idx' off off' a size' ownerAuth' s'.
         \<lbrakk>idx' = of_nat idx; off' = of_nat off\<rbrakk>
         \<Longrightarrow> corres (R_HEAP_DATA_rel (E_STORED_DATA_rel string_rel)) P P'
-        (TPM_NV_ReadValue idx off a) (TPM_NV_ReadValue' idx' off' size' ownerAuth' s')"*)
-
-print_locale! sable_m
+        (TPM_NV_ReadValue idx off a) (TPM_NV_ReadValue' idx' off' size' ownerAuth' s')"
+      print_locale! sable_m
 
 end

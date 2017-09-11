@@ -420,8 +420,8 @@ lemma exec_handlers_Hoare_from_vcg_nofail:
   "\<Gamma> \<turnstile>\<^bsub>/F\<^esub> P c Q \<Longrightarrow> exec_handlers_Hoare \<Gamma> P (c # cs) Q A"
   apply (drule hoare_sound)
   apply (simp add: cvalid_def HoarePartialDef.valid_def
-                   exec_handlers_Hoare_def split del: split_if)
-  apply (clarsimp split del: split_if)
+                   exec_handlers_Hoare_def split del: if_split)
+  apply (clarsimp split del: if_split)
   apply (erule exec_handlers.cases, auto)
   done
 
@@ -429,8 +429,8 @@ lemma exec_handlers_Hoare_from_vcg_fails:
   "\<lbrakk> \<Gamma> \<turnstile>\<^bsub>/F\<^esub> P c {},UNIV; UNIV \<subseteq> A \<rbrakk> \<Longrightarrow> exec_handlers_Hoare \<Gamma> P (c # cs) Q A"
   apply (drule hoare_sound)
   apply (simp add: cvalid_def HoarePartialDef.valid_def
-                   exec_handlers_Hoare_def split del: split_if)
-  apply (clarsimp split del: split_if)
+                   exec_handlers_Hoare_def split del: if_split)
+  apply (clarsimp split del: if_split)
   apply (erule exec_handlers.cases, simp_all)
    apply (cases cs)
     apply (auto elim!: exec_handlers.cases)[1]
@@ -987,7 +987,7 @@ lemma ccorres_liftM_simp [simp]:
   apply (erule (5) ccorresE)
   apply (simp add: liftM_def NonDetMonad.bind_def return_def)
   apply (erule bexI [rotated])
-  apply (simp add: unif_rrel_def split: split_if_asm)
+  apply (simp add: unif_rrel_def split: if_split_asm)
   done
 
 lemma ccorres_cond_weak:  
@@ -1225,7 +1225,7 @@ lemma ccorres_gen_asm2:
    prefer 2
    apply (rule ccorres_guard_imp)
    apply (erule rl)
-    apply (simp split: split_if_asm)+
+    apply (simp split: if_split_asm)+
     done
  
 lemma ccorres_guard_imp2:
@@ -1454,6 +1454,35 @@ lemma ccorres_master_splitE:
   apply (rule hoare[unfolded ccHoarePost_def])
   done
 
+lemma ccorres_symb_exec_r_rv_abstract:
+  "\<lbrakk>  \<And>s. \<Gamma>\<turnstile> (R' \<inter> {s'. R s \<and> (s, s') \<in> sr}) c ({s'. (s, s') \<in> sr} \<inter> {s. F (xf' s)});
+        \<And>rv' t t'. ceqv \<Gamma> xf' rv' t t' y (y' rv');
+        \<And>rv'. F rv' \<Longrightarrow> ccorres_underlying sr \<Gamma> r xf arrel axf P (Q rv') hs a (y' rv');
+        \<Gamma> \<turnstile>\<^bsub>/Ft\<^esub> P' c {s. \<forall>rv. F (xf' s) \<longrightarrow> s \<in> Q (xf' s)} \<rbrakk>
+       \<Longrightarrow> ccorres_underlying sr \<Gamma> r xf arrel axf (P and R) (P' \<inter> R') hs a (c;;y)"
+  apply (rule ccorres_guard_imp2)
+   apply (rule ccorres_add_return,
+          rule_tac r'="\<lambda>rv rv'. F rv'" and xf'=xf'
+                in ccorres_split_nothrow)
+       apply (rule_tac P'=R' in ccorres_from_vcg[where P=R])
+       apply (clarsimp simp add: return_def Int_def conj_comms)
+      apply assumption
+     apply fastforce
+    apply wp
+   apply simp
+  apply simp
+  done
+
+lemma ccorres_symb_exec_r_known_rv:
+  "\<lbrakk>  \<And>s. \<Gamma>\<turnstile> (R' \<inter> {s'. R s \<and> (s, s') \<in> sr}) c ({s'. (s, s') \<in> sr} \<inter> {s. xf' s = val});
+        \<And>rv' t t'. ceqv \<Gamma> xf' rv' t t' y (y' rv');
+        ccorres_underlying sr \<Gamma> r xf arrel axf P Q hs a (y' val);
+        \<Gamma> \<turnstile>\<^bsub>/Ft\<^esub> P' c {s. \<forall>rv. (xf' s) = val \<longrightarrow> s \<in> Q} \<rbrakk>
+       \<Longrightarrow> ccorres_underlying sr \<Gamma> r xf arrel axf (P and R) (P' \<inter> R') hs a (c;;y)"
+  by (rule_tac F="\<lambda>rv'. rv' = val" and xf'=xf'
+          in ccorres_symb_exec_r_rv_abstract,
+       simp_all)
+
 lemma ccorres_symb_exec_r_abstract_UNIV:
   "\<lbrakk>  \<And>s. \<Gamma>\<turnstile> (R' \<inter> {s'. R s \<and> (s, s') \<in> sr}) m ({s'. (s, s') \<in> sr} \<inter> {s. F (xf' s)});
         \<And>rv' t t'. ceqv \<Gamma> xf' rv' t t' y (y' rv');
@@ -1597,5 +1626,37 @@ lemma ccorres_cond_seq:
    apply assumption
   apply assumption
   done
+
+lemma ccorres_assume_pre:
+  assumes "\<And>s. P s \<Longrightarrow> ccorres_underlying sr \<Gamma> r xf r' xf' (P and (\<lambda>s'. s' = s)) P' hs H C"
+  shows "ccorres_underlying sr \<Gamma> r xf r' xf' P P' hs H C"
+  apply (clarsimp simp: ccorres_underlying_def)
+  apply (frule assms)
+  apply (simp add: ccorres_underlying_def)
+  apply blast
+  done
+
+lemma ccorres_name_pre:
+  "(\<And>s. P s \<Longrightarrow> ccorres_underlying sr \<Gamma> r xf r' xf' (\<lambda>s'. s' = s) P' hs H C)
+    \<Longrightarrow> ccorres_underlying sr \<Gamma> r xf r' xf'  P P' hs H C"
+   apply (rule ccorres_assume_pre)
+   apply (rule ccorres_guard_imp)
+     apply fastforce
+    apply simp
+   apply simp
+   done
+
+(* using subst bind_assoc[symmetric] works, but causes flex-flex pairs in ccorres proofs
+   using simp won't create flex-flex pairs, but will rearrange everything *)
+lemma ccorres_lhs_assoc:
+  assumes cc: "ccorres_underlying sr E r xf arrel axf G G' hs (m >>= f >>= g) c"
+  shows "ccorres_underlying sr E r xf arrel axf G G' hs (do x \<leftarrow> m; f x >>= g od) c"
+  using cc by (simp add: bind_assoc)
+
+(* FIXME: move *)
+lemma ccorres_grab_asm:
+  "(Q \<Longrightarrow> ccorres_underlying sr G rr xf ar ax P P' hs f g) \<Longrightarrow>
+   ccorres_underlying sr G rr xf ar ax (P and K Q) P' hs f g"
+  by (fastforce simp: ccorres_underlying_def)
 
 end

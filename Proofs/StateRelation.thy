@@ -4,7 +4,7 @@ imports
   "../Abstract/Abstract"
 begin
 
-context sable_verified_pp
+context sable_isa
 begin
 
 definition
@@ -14,7 +14,7 @@ where
     of_nat h = tdTPM_SESSION_C.authHandle_C s' \<and>
     NONCE_rel (Session.nonceEven s) (tdTPM_SESSION_C.nonceEven_C s') \<and>
     NONCE_rel (Session.nonceOdd s) (tdTPM_SESSION_C.nonceOdd_C s') \<and>
-    BOOL_rel (Session.continue s) (tdTPM_SESSION_C.continueAuthSession_C s')"
+    BOOL_rel (Session.continueSession s) (tdTPM_SESSION_C.continueAuthSession_C s')"
 
 definition
   R :: "(astate \<times> lifted_globals) set"

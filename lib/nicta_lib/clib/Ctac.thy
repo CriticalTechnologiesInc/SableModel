@@ -11,9 +11,9 @@
 (* Automation framework for general C refinement *)
 
 theory Ctac
-imports 
-	Corres_C 
-	"../XPres"
+imports
+  Corres_C
+  "../XPres"
 begin
 
 (* This file includes theorems associated with ctac and friends *)
@@ -360,8 +360,8 @@ lemma semantic_equiv_While_cong:
   done
 
 lemma semantic_equiv_Seq_cong:
-  assumes sea: "\<And>s s'. semantic_equiv Gamma s s' a a'"
-  and     seb: "\<And>s s'. semantic_equiv Gamma s s' b b'"
+  assumes sea: "\<And>s'. semantic_equiv Gamma s s' a a'"
+  and     seb: "\<And>s. semantic_equiv Gamma s s' b b'"
   shows   "semantic_equiv Gamma s s' (a ;; b) (a' ;; b')"
   using sea seb
   apply (simp add: semantic_equiv_def2)
@@ -399,8 +399,8 @@ lemma semantic_equiv_refl:
   by (rule semantic_equivI, simp)
 
 lemma semantic_equiv_trans:
-  assumes  sea: "\<And>s s'. semantic_equiv Gamma s s' a b" 
-  and      seb: "\<And>s s'. semantic_equiv Gamma s s' b c" 
+  assumes  sea: "semantic_equiv Gamma s s' a b" 
+  and      seb: "semantic_equiv Gamma s s' b c" 
   shows   "semantic_equiv Gamma s s' a c" 
   using sea seb 
   by (simp add: semantic_equiv_def2)
@@ -423,9 +423,17 @@ lemma semantic_equiv_Seq_assoc:
   apply (rule exec_assoc)
   done
 
+lemma semantic_equiv_seq_assoc_eq:
+  "semantic_equiv Gamma s s' (a ;; (b ;; c)) d
+     = semantic_equiv Gamma s s' (a ;; b ;; c) d"
+  "semantic_equiv Gamma s s' d (a ;; (b ;; c))
+     = semantic_equiv Gamma s s' d (a ;; b ;; c)"
+  by (metis semantic_equiv_trans semantic_equiv_Seq_assoc
+            semantic_equiv_Seq_assoc[THEN semantic_equiv_sym[THEN iffD1]])+
+
 lemma semantic_equiv_Cond:
-  assumes  sel: "\<And>s s'. semantic_equiv Gamma s s' l l'" 
-  and      ser: "\<And>s s'. semantic_equiv Gamma s s' r r'" 
+  assumes  sel: "semantic_equiv Gamma s s' l l'" 
+  and      ser: "semantic_equiv Gamma s s' r r'" 
   shows   "semantic_equiv Gamma s s' (Cond P l r) (Cond P l' r')" 
   using sel ser
   by (auto elim!: exec_Normal_elim_cases simp: semantic_equiv_def2 intro: exec.intros)
@@ -438,6 +446,57 @@ lemma semantic_equiv_Cond_False:
   "semantic_equiv G s s' (Cond {} c c') c'"
   by (auto elim!: exec_Normal_elim_cases simp: semantic_equiv_def2 intro: exec.intros)
 
+lemma semantic_equiv_Cond_cases:
+  "semantic_equiv G s s' a (Cond P c d)
+    = semantic_equiv G s s' a (if s \<in> P then c else d)"
+  "semantic_equiv G s s' (Cond P c d) e
+    = semantic_equiv G s s' (if s \<in> P then c else d) e"
+  by (auto simp: semantic_equiv_def2 elim!: exec_Normal_elim_cases intro: exec.intros)
+
+lemma semantic_equiv_cond_seq2:
+  "semantic_equiv G s s' (e;; Cond Q (c;;d) (c';;d)) (e;; Cond Q c c';; d)"
+  apply (simp add: semantic_equiv_seq_assoc_eq[symmetric])
+  apply (rule semantic_equiv_Seq_cong, rule semantic_equiv_refl)
+  by (auto simp: semantic_equiv_def2 elim!: exec_Normal_elim_cases intro: exec.intros)
+
+lemmas ccorres_cond_seq2 = ccorres_semantic_equiv[OF semantic_equiv_cond_seq2]
+
+lemma semantic_equiv_cond_seq2_seq:
+  "semantic_equiv G s s' (ci;; Cond Q (c;;ce) (c';;ce);; d) (ci;; Cond Q c c';; ce;; d)"
+  apply (simp add: semantic_equiv_seq_assoc_eq[symmetric])
+  apply (rule semantic_equiv_Seq_cong, rule semantic_equiv_refl)
+  apply (simp add: semantic_equiv_seq_assoc_eq)
+  by (auto simp: semantic_equiv_def2 elim!: exec_Normal_elim_cases intro: exec.intros)
+
+lemmas ccorres_cond_seq2_seq = ccorres_semantic_equiv[OF semantic_equiv_cond_seq2_seq]
+
+(* FIXME: move
+   It appears that the semantic equiv. lemmas should go into their own file, then
+   CCorresLemmas on top of that, and then finally Ctac on top of CCorresLemmas *)
+lemma ccorres_rewrite_cond_sr:
+  assumes abs: "\<forall>s s'. (s, s') \<in> sr \<and> Q s \<and> s' \<in> Q' \<longrightarrow> (s' \<in> C) = (s' \<in> C') "
+  and     c1: "ccorres_underlying sr \<Gamma> r xf arrel axf P P' hs m (Cond C' c d)"
+  shows   "ccorres_underlying sr \<Gamma> r xf arrel axf (P and Q) (P' \<inter> Q') hs
+                              m (Cond C c d)"
+  apply (rule ccorres_name_pre)
+  apply (rule_tac Q="op = s" and Q'="P' \<inter> Q' \<inter> {s'. (s, s') \<in> sr}" in stronger_ccorres_guard_imp)
+    apply (rule ccorres_semantic_equiv[THEN iffD1, rotated])
+     apply (rule ccorres_guard_imp, rule c1, simp_all)
+  apply (clarsimp simp add: semantic_equiv_Cond_cases abs semantic_equiv_refl)
+  done
+
+lemma ccorres_rewrite_cond_sr_Seq:
+  assumes abs: "\<forall>s s'. (s, s') \<in> sr \<and> Q s \<and> s' \<in> Q' \<longrightarrow> (s' \<in> C) = (s' \<in> C') "
+  and     c1: "ccorres_underlying sr \<Gamma> r xf arrel axf P P' hs m (Cond C' c d ;; e)"
+  shows   "ccorres_underlying sr \<Gamma> r xf arrel axf (P and Q) (P' \<inter> Q') hs
+                              m (Cond C c d ;; e)"
+  apply (rule ccorres_name_pre)
+  apply (rule_tac Q="op = s" and Q'="P' \<inter> Q' \<inter> {s'. (s, s') \<in> sr}" in stronger_ccorres_guard_imp)
+    apply (rule ccorres_semantic_equiv[THEN iffD1, rotated])
+     apply (rule ccorres_guard_imp, rule c1, simp_all)
+  apply (rule semantic_equiv_Seq_cong)
+   apply (clarsimp simp add: semantic_equiv_Cond_cases abs semantic_equiv_refl)+
+  done
 
 definition
   "push_in_stmt G stmt c c' \<equiv> (\<forall>s s'. semantic_equiv G s s' (c ;; stmt) c')"
@@ -526,7 +585,7 @@ lemma ccorres_special_trim_guard_DontReach_pis:
 end
 
 lemmas ccorres_boilerplace_simp_dels = 
-  Collect_const -- "Avoid getting an implication due to split_if.  Should probably just remove split_if"
+  Collect_const -- "Avoid getting an implication due to if_split.  Should probably just remove if_split"
 
 lemma ccorres_introduce_UNIV_Int_when_needed:
   "ccorres_underlying sr Gamm r xf ar axf P (UNIV \<inter> {x. Q x}) hs a c
@@ -1049,8 +1108,8 @@ lemmas ceqv_rules = ceqv_refl [where xf' = xfdc] -- "Any ceqv with xfdc should b
   ceqv_refl [where c = catchbrk_C]
 
 definition
-  ceqv_xpres :: "(int \<rightharpoonup> ('s, int, strictc_errortype) com) \<Rightarrow> ('s \<Rightarrow> 'a) \<Rightarrow> 'a
-                    \<Rightarrow> bool \<Rightarrow> ('s, int, strictc_errortype) com \<Rightarrow> bool \<Rightarrow> ('s, int, strictc_errortype) com \<Rightarrow> bool"
+  ceqv_xpres :: "('p \<rightharpoonup> ('s, 'p, 'x) com) \<Rightarrow> ('s \<Rightarrow> 'a) \<Rightarrow> 'a
+                    \<Rightarrow> bool \<Rightarrow> ('s, 'p, 'x) com \<Rightarrow> bool \<Rightarrow> ('s, 'p, 'x) com \<Rightarrow> bool"
 where
  "ceqv_xpres \<Gamma> xf v pres c pres' c'
     \<equiv> \<forall>s s' s''. (pres \<longrightarrow> xf s = v)
@@ -1239,7 +1298,11 @@ lemma ceqv_xpres_Throw:
 lemma exec_Basic_Seq:
   "\<Gamma> \<turnstile> \<langle>Basic f ;; c, Normal s\<rangle> \<Rightarrow> s'
      = \<Gamma> \<turnstile> \<langle>c, Normal (f s)\<rangle> \<Rightarrow> s'"
-  by (auto elim!: exec_elim_cases intro: exec.intros)
+  by (auto elim: exec_elim_cases intro: exec.Basic exec.Seq)
+
+lemma exec_Basic_Seq_Basic:
+  "\<Gamma>\<turnstile> \<langle>Basic f;; Basic g, x\<rangle> \<Rightarrow> y = \<Gamma>\<turnstile> \<langle>Basic (g \<circ> f), x\<rangle> \<Rightarrow> y"
+  by (auto simp: o_def elim: exec_elim_cases intro: exec.Basic exec.Seq)
 
 lemma ceqv_xpres_return_C:
   "\<lbrakk> ceqv_xpres_rewrite_basic xf v qf qf';
@@ -1328,13 +1391,230 @@ lemma ceqv_xpres_rewrite_set_rules:
   "\<lbrakk> ceqv_xpres_rewrite_set xf v S S''; ceqv_xpres_rewrite_set xf v S' S''' \<rbrakk>
      \<Longrightarrow> ceqv_xpres_rewrite_set xf v (if G then S else S') (if G then S'' else S''')"
   by (simp_all add: ceqv_xpres_rewrite_set_def ceqv_xpres_rewrite_basic_def
-             split: split_if)
+             split: if_split)
 
 lemma ceqv_xpres_eq_If_rules:
   "ceqv_xpres_eq_If False x y y"
   "ceqv_xpres_eq_If True x y x"
   by (simp add: ceqv_xpres_eq_If_def)+
 
+definition
+  "simpl_sequence f xs
+    = foldr (Seq) (map f xs) Skip"
+
+lemma simpl_sequence_Cons:
+  "simpl_sequence f (x # xs) = Seq (f x) (simpl_sequence f xs)"
+  by (simp add: simpl_sequence_def)
+
+fun(sequential)
+  simpl_final_basic_opts :: "('s, 'p, 'x) com \<Rightarrow> ('s \<Rightarrow> 's) option"
+where
+    "simpl_final_basic_opts (x ;; y)
+        = (case (simpl_final_basic_opts y) of None \<Rightarrow> simpl_final_basic_opts x
+            | Some v \<Rightarrow> Some v)"
+  | "simpl_final_basic_opts (Basic f) = Some f"
+  | "simpl_final_basic_opts (Guard E F c) = simpl_final_basic_opts c"
+  | "simpl_final_basic_opts Skip = None"
+  | "simpl_final_basic_opts Throw = None"
+  | "simpl_final_basic_opts c = Some id"
+
+definition
+  "simpl_final_basic c = (case simpl_final_basic_opts c
+      of Some v \<Rightarrow> v | None \<Rightarrow> id)"
+
+lemmas simpl_final_basic_simps[simp]
+    = simpl_final_basic_def[where c="Seq c c'" for c c']
+      simpl_final_basic_def[where c="Basic f" for f]
+      simpl_final_basic_def[where c="Guard E F c" for E F c]
+
+lemma simpl_final_basic_opts_exec[OF _ refl refl]:
+  "\<Gamma> \<turnstile> \<langle>c, xs\<rangle> \<Rightarrow> xs' \<Longrightarrow> xs = Normal t \<Longrightarrow> xs' = Normal t'
+    \<Longrightarrow> (case simpl_final_basic_opts c of None \<Rightarrow> t' = t
+            | Some f \<Rightarrow> \<exists>s. t' = f s)"
+  apply (induct arbitrary: t t' rule: exec.induct, simp_all)
+   apply metis
+  apply atomize
+  apply clarsimp
+  apply (case_tac s')
+     apply (auto split: option.split_asm)[1]
+    apply (auto elim!: exec_elim_cases)
+  done
+
+lemma simpl_final_basic_exec:
+  "\<Gamma> \<turnstile> \<langle>c, Normal t\<rangle> \<Rightarrow> Normal t'
+    \<Longrightarrow> \<exists>s. t' = simpl_final_basic c s"
+  apply (frule simpl_final_basic_opts_exec)
+  apply (simp add: simpl_final_basic_def split: option.split_asm)
+  done
+
+lemma ceqv_xpres_to_simpl_sequence:
+  fixes v :: "'a :: ring_1"
+  assumes c: "\<And>v. ceqv_xpres \<Gamma> xf' v True c pres (c' v)"
+      and v: "\<And>v s. xf' (simpl_final_basic (c' v) s) - v = offs"
+  shows "\<not> CP (v + of_nat n * offs)
+    \<Longrightarrow> ceqv_xpres \<Gamma> xf' v True (While {s. CP (xf' s)} c) False
+        (simpl_sequence c' (takeWhile CP (map (\<lambda>x. v + of_nat x * offs) [0 ..< n])))"
+  (is "_ \<Longrightarrow> ceqv_xpres _ _ _ _ (While ?S _) _ _")
+proof (induct n arbitrary: v)
+  case 0
+  show ?case using c[where v=v] 0
+    apply (simp add: simpl_sequence_def)
+    apply (simp add: ceqv_xpres_eq_imp ceqv_def)
+    apply (auto elim!: exec_Normal_elim_cases intro: exec.intros)[1]
+    done
+next
+  case (Suc n)
+  have foo: "\<And>t t'. (\<Gamma> \<turnstile> \<langle>c' v, Normal t\<rangle> \<Rightarrow> Normal t') \<longrightarrow> xf' t' = v + offs"
+    using v
+    by (clarsimp simp: field_simps dest!: simpl_final_basic_exec)
+
+  show ?case using c[where v=v] Suc.hyps[where v="v + offs"] Suc.prems
+    apply (subst upt_conv_Cons, simp)
+    apply (simp only: map_Suc_upt[symmetric] list.simps)
+    apply (cases "CP v")
+     apply (simp add: o_def field_simps simpl_sequence_Cons
+                      ceqv_xpres_eq_imp)
+     apply (clarsimp, rule ceqv_trans[where c'="c ;; While ?S c"])
+      apply (simp add: ceqv_def)
+      apply (auto elim!: exec_Normal_elim_cases intro: exec.Seq exec.WhileTrue)[1]
+     apply (rule ceqv_trans[where c'="c' v ;; While ?S c"])
+      apply (simp add: ceqv_def)
+      apply (auto elim!: exec_Normal_elim_cases intro: exec.Seq)[1]
+     apply (simp add: ceqv_def)
+     apply (intro impI exec_Seq_cong refl)
+     apply (simp add: foo)
+    apply (simp add: simpl_sequence_def field_simps)
+    apply (simp add: ceqv_xpres_eq_imp ceqv_def)
+    apply (auto intro: exec.WhileFalse exec.Skip elim!: exec_Normal_elim_cases)[1]
+    done
+qed
+
+lemma ceqv_xpres_While_simpl_sequence:
+  fixes v :: "'a :: ring_1"
+  assumes c: "\<And>v. ceqv_xpres \<Gamma> xf' v True c pres (c' v)"
+  shows "ceqv_xpres \<Gamma> xf' v True (While {s. CP (xf' s)} c) False
+        (if \<exists>n offs. (\<forall>s v. (xf' (simpl_final_basic (c' v) s) - v = offs)) \<and> \<not> CP (v + of_nat n * offs)
+          then simpl_sequence c' (map (\<lambda>x. v + of_nat x
+                  * (THE offs. \<forall>s v. (xf' (simpl_final_basic (c' v) s) - v = offs)))
+              [0 ..< (LEAST n. \<not> CP (v + of_nat n
+                  * (THE offs. \<forall>s v. (xf' (simpl_final_basic (c' v) s) - v = offs))))])
+          else While {s. CP (xf' s)} c)"
+  apply (split if_split, simp add: ceqv_xpres_def[where c=c and c'=c for c])
+  apply (clarsimp simp: ceqv_xpres_eq_ceqv)
+  apply (rule ceqv_trans)
+   apply (rule_tac n="LEAST n. \<not> CP (v + of_nat n * offs)"
+     in ceqv_xpres_to_simpl_sequence[simplified ceqv_xpres_eq_ceqv, rule_format])
+     apply (rule c)
+    apply simp
+   apply simp
+   apply (rule LeastI_ex)
+   apply blast
+  apply (subst takeWhile_eq_all_conv[THEN iffD2])
+   apply (clarsimp dest!: not_less_Least)
+  apply (simp add: ceqv_def)
+  done
+
+lemma ccorres_underlying_name_seq_bound:
+  "(\<not> CP n \<and> (\<forall>n' < n. CP n'))
+    \<Longrightarrow> ccorres_underlying srel \<Gamma> rrel xf arrel axf G G' hs m
+        (simpl_sequence c' (map f [0 ..< n]))
+    \<Longrightarrow> ccorres_underlying srel \<Gamma> rrel xf arrel axf
+          G G' hs m (if \<exists>n. \<not> CP n
+            then simpl_sequence c' (map f [0 ..< (LEAST n. \<not> CP n)])
+            else c)"
+  apply (subst if_P, blast)
+  apply (subst Least_equality[where x=n], simp_all)
+  apply (rule ccontr, simp add: linorder_not_le)
+  done
+
+lemma sequenceE_simpl_sequence_nth_corres':
+  "\<lbrakk> length xs = length ys;
+    \<And>zs. length zs < length xs \<Longrightarrow>
+        ccorres_underlying sr \<Gamma> (inr_rrel (\<lambda>rv rv'. r' (prev_xs @ zs @ [rv]) rv')) xf'
+                            (inl_rrel arrel) axf
+                            (P and F (length prev_xs + length zs)) (Q \<inter> {s. r' (prev_xs @ zs) (xf' s)}) hs
+                            (xs ! length zs) (f (ys ! length zs));
+    \<And>s \<sigma>. s \<in> Q \<Longrightarrow> P \<sigma> \<Longrightarrow>
+        (\<sigma>, s) \<in> sr \<Longrightarrow> \<forall>y \<in> set ys. \<Gamma>\<turnstile>\<^bsub>/UNIV\<^esub> {s} (f y) Q,UNIV;
+    \<And>n. Suc n < length xs \<Longrightarrow> \<lbrace>P and F (length prev_xs + n)\<rbrace> xs ! n \<lbrace>\<lambda>_. P and F (length prev_xs + Suc n)\<rbrace>, -
+    \<rbrakk>
+    \<Longrightarrow> ccorres_underlying sr \<Gamma> (inr_rrel (\<lambda>rv rv'. r' (prev_xs @ rv) rv')) xf'
+                  (inl_rrel arrel) axf
+                  (\<lambda>s. xs \<noteq> [] \<longrightarrow> P s \<and> F (length prev_xs) s) (Q \<inter> {s. r' prev_xs (xf' s)}) hs
+          (sequenceE xs)
+          (simpl_sequence f ys)"
+proof (induct xs ys arbitrary: prev_xs rule: list_induct2)
+  case Nil
+  show ?case
+    apply (simp add: sequenceE_def simpl_sequence_def)
+    apply (rule ccorres_guard_imp2, rule ccorres_returnOk_skip)
+    apply simp
+    done
+next
+  case (Cons x xs y ys)
+  show ?case
+    apply (simp add: simpl_sequence_Cons sequenceE_Cons)
+    apply (rule ccorres_guard_imp2)
+     apply (rule ccorres_splitE)
+         apply (simp add: inl_rrel_inl_rrel)
+         apply (rule Cons.prems(1)[where zs=Nil, simplified])
+        apply (rule ceqv_refl)
+       apply (simp add: liftME_def[symmetric] liftME_liftM)
+       apply (rule ccorres_rel_imp2, rule Cons.hyps(2)[where prev_xs="prev_xs @ [rv]" for rv])
+           apply (rule ccorres_guard_imp2, rule ccorres_rel_imp2,
+             rule Cons.prems(1)[where zs="z # zs" for z zs, simplified])
+              apply simp+
+          apply (blast dest: Cons.prems[simplified])
+         apply simp
+         apply (cut_tac n="Suc n" in Cons.prems(3), simp, simp)
+        apply (clarsimp elim!: inl_inrE)
+        apply assumption
+       apply (clarsimp elim!: inl_inrE)
+      apply simp
+      apply (rule hoare_vcg_const_imp_lift_R)
+      apply (rule hoare_gen_asmE)
+      apply (erule Cons.prems(3)[where n=0, simplified])
+     apply (rule_tac P="Q \<inter> {s. \<exists>\<sigma>. P \<sigma> \<and> (\<sigma>, s) \<in> sr}"
+         in HoarePartial.conseq_exploit_pre)
+     apply (clarsimp, rule conseqPost, rule Cons.prems(2)[simplified, THEN conjunct1],
+       simp+)
+      apply (clarsimp simp: ccHoarePost_def elim!: inl_inrE)
+     apply simp
+    apply auto
+    done
+qed
+
+lemmas sequenceE_simpl_sequence_nth_corres
+    = sequenceE_simpl_sequence_nth_corres'[where prev_xs=Nil, simplified]
+
+lemma mapME_x_simpl_sequence_fun_related:
+  "\<lbrakk> ys = map yf xs;
+    \<And>n x. x \<in> set xs \<Longrightarrow>
+        ccorres_underlying sr \<Gamma> (inr_rrel dc) xfdc (inl_rrel arrel) axf
+            (P and F n (n < length xs) x) Q hs
+                            (f x) (f' (yf x));
+    \<And>s \<sigma>. s \<in> Q \<Longrightarrow> P \<sigma> \<Longrightarrow>
+        (\<sigma>, s) \<in> sr \<Longrightarrow> \<forall>x \<in> set xs. \<Gamma>\<turnstile>\<^bsub>/UNIV\<^esub> {s} (f' (yf x)) Q,UNIV;
+    \<And>n. Suc n < length xs \<Longrightarrow> \<lbrace>P and F n True (xs ! n)\<rbrace> f (xs ! n) \<lbrace>\<lambda>_. P and F (Suc n) (Suc n < length xs) (xs ! Suc n)\<rbrace>, -
+    \<rbrakk>
+    \<Longrightarrow> ccorres_underlying sr \<Gamma> (inr_rrel dc) xfdc
+                  (inl_rrel arrel) axf
+                  (P and F 0 (xs \<noteq> []) (xs ! 0)) Q hs
+          (mapME_x f xs)
+          (simpl_sequence f' ys)"
+  apply (simp add: mapME_x_sequenceE liftME_def[symmetric]
+    liftME_liftM)
+  apply (rule ccorres_rel_imp2, rule ccorres_guard_imp2,
+    rule sequenceE_simpl_sequence_nth_corres[where r'=dc and xf'=xfdc
+      and P=P and F="\<lambda>i. F i (i < length xs) (xs ! i)" and Q=Q and arrel=arrel and axf=axf];
+        clarsimp elim!: inl_inrE)
+  apply (erule_tac x="length zs" in meta_allE
+       | erule_tac x="xs ! length zs" in meta_allE)+
+  apply (simp add: dc_def)
+  done
+
+lemmas mapME_x_simpl_sequence_same
+    = mapME_x_simpl_sequence_fun_related[where yf=id, simplified]
 
 lemma call_ignore_cong:
   "call i f g r = call i f g r" by (rule refl)
@@ -1447,90 +1727,11 @@ lemmas ccorres_move_c_guards =
   ccorres_move_Guard[OF abs_c_guard_from_abs_h_t_valid]
   ccorres_move_Guard
 
-lemma c_guard_abs_cte:
-  fixes p :: "cte_C ptr"
-  shows "\<forall>s s'. (s, s') \<in> rf_sr \<and> cte_at' (ptr_val p) s \<and> True \<longrightarrow> s' \<Turnstile>\<^sub>c p"
-  apply (cases p)
-  apply (clarsimp simp: cte_wp_at_ctes_of)
-  apply (erule (1) rf_sr_ctes_of_cliftE)
-  apply (simp add: typ_heap_simps')
-  done
-
-lemmas ccorres_move_c_guard_cte [corres_pre] = ccorres_move_c_guards  [OF c_guard_abs_cte]
-
-lemma c_guard_abs_tcb:
-  fixes p :: "tcb_C ptr"
-  shows "\<forall>s s'. (s, s') \<in> rf_sr \<and> tcb_at' (ctcb_ptr_to_tcb_ptr p) s \<and> True \<longrightarrow> s' \<Turnstile>\<^sub>c p"
-  apply clarsimp
-  apply (drule (1) tcb_at_h_t_valid)
-  apply simp
-  done
-
-lemmas ccorres_move_c_guard_tcb [corres_pre] = ccorres_move_c_guards [OF c_guard_abs_tcb]
-
 lemma h_t_array_valid_array_assertion:
   "h_t_array_valid htd ptr n \<Longrightarrow> 0 < n
     \<Longrightarrow> array_assertion ptr n htd"
   apply (simp add: array_assertion_def)
   apply (fastforce intro: exI[where x=0])
-  done
-
-lemma cte_array_relation_array_assertion:
-  "gsCNodes s p = Some n \<Longrightarrow> cte_array_relation s cstate
-    \<Longrightarrow> array_assertion (cte_Ptr p) (2 ^ n) (hrs_htd (t_hrs_' cstate))"
-  apply (rule h_t_array_valid_array_assertion)
-   apply (clarsimp simp: cvariable_array_map_relation_def)
-  apply simp
-  done
-
-lemma rf_sr_gsCNodes_array_assertion:
-  "gsCNodes s p = Some n \<Longrightarrow> (s, s') \<in> rf_sr
-    \<Longrightarrow>  array_assertion (cte_Ptr p) (2 ^ n) (hrs_htd (t_hrs_' (globals s')))"
-  by (clarsimp simp: rf_sr_def cstate_relation_def Let_def
-                     cte_array_relation_array_assertion)
-
-lemma rf_sr_tcb_ctes_array_assertion:
-  "\<lbrakk> (s, s') \<in> rf_sr; tcb_at' (ctcb_ptr_to_tcb_ptr tcb) s \<rbrakk>
-    \<Longrightarrow> array_assertion (cte_Ptr (ptr_val tcb && 0xFFFFFE00))
-        (unat tcbCNodeEntries) (hrs_htd (t_hrs_' (globals s')))"
-  apply (rule h_t_array_valid_array_assertion, simp_all add: tcbCNodeEntries_def)
-  apply (clarsimp simp: rf_sr_def cstate_relation_def Let_def
-                        cvariable_array_map_relation_def
-                        cpspace_relation_def)
-  apply (drule obj_at_ko_at', clarsimp)
-  apply (drule spec, drule mp, rule exI, erule ko_at_projectKO_opt)
-  apply (frule ptr_val_tcb_ptr_mask)
-  apply (simp add: mask_def)
-  done
-
-lemma rf_sr_tcb_ctes_array_assertion2:
-  "\<lbrakk> (s, s') \<in> rf_sr; tcb_at' tcb s \<rbrakk>
-    \<Longrightarrow> array_assertion (cte_Ptr tcb)
-        (unat tcbCNodeEntries) (hrs_htd (t_hrs_' (globals s')))"
-  apply (frule(1) rf_sr_tcb_ctes_array_assertion[where
-      tcb="tcb_ptr_to_ctcb_ptr t" for t, simplified])
-  apply (simp add: ptr_val_tcb_ptr_mask')
-  done
-
-lemma array_assertion_abs_tcb_ctes:
-  "\<forall>s s'. (s, s') \<in> rf_sr \<and> tcb_at' (ctcb_ptr_to_tcb_ptr (tcb s')) s \<and> (n s' \<le> unat tcbCNodeEntries)
-    \<longrightarrow> (x s' = 0 \<or> array_assertion (cte_Ptr (ptr_val (tcb s') && 0xFFFFFE00)) (n s') (hrs_htd (t_hrs_' (globals s'))))"
-  "\<forall>s s'. (s, s') \<in> rf_sr \<and> tcb_at' tcb' s \<and> (n s' \<le> unat tcbCNodeEntries)
-    \<longrightarrow> (x s' = 0 \<or> array_assertion (cte_Ptr tcb') (n s') (hrs_htd (t_hrs_' (globals s'))))"
-  apply (safe intro!: disjCI2)
-   apply (drule(1) rf_sr_tcb_ctes_array_assertion rf_sr_tcb_ctes_array_assertion2
-     | erule array_assertion_shrink_right | simp)+
-  done
-
-lemma array_assertion_abs_tcb_ctes_add:
-  "\<forall>s s'. (s, s') \<in> rf_sr \<and> tcb_at' (ctcb_ptr_to_tcb_ptr (tcb s')) s
-        \<and> (n s' \<ge> 0 \<and> (case strong of True \<Rightarrow> n s' + 1 | False \<Rightarrow> n s') \<le> uint tcbCNodeEntries)
-    \<longrightarrow> ptr_add_assertion (cte_Ptr (ptr_val (tcb s') && 0xFFFFFE00)) (n s')
-                strong (hrs_htd (t_hrs_' (globals s')))"
-  apply (clarsimp, drule(1) rf_sr_tcb_ctes_array_assertion)
-  apply (simp add: ptr_add_assertion_positive, rule disjCI2)
-  apply (erule array_assertion_shrink_right)
-  apply (cases strong, simp_all add: unat_def)
   done
 
 lemma array_assertion_abs_to_const:
@@ -1545,114 +1746,14 @@ lemmas ccorres_move_array_assertions
       ccorres_move_Guard_Seq[OF array_assertion_abs_to_const]
       ccorres_move_Guard[OF array_assertion_abs_to_const]
 
-lemmas ccorres_move_array_assertion_tcb_ctes [corres_pre]
-    = ccorres_move_array_assertions [OF array_assertion_abs_tcb_ctes(1)]
-      ccorres_move_array_assertions [OF array_assertion_abs_tcb_ctes(2)]
-      ccorres_move_Guard_Seq[OF array_assertion_abs_tcb_ctes_add]
-      ccorres_move_Guard[OF array_assertion_abs_tcb_ctes_add]
-
 lemma ptr_add_assertion_positive_helper:
   "n == m \<Longrightarrow> 0 \<le> sint m \<Longrightarrow> 0 \<le> sint n"
   by simp
-
-lemma c_guard_abs_tcb_ctes:
-  fixes p :: "cte_C ptr"
-  shows "\<forall>s s'. (s, s') \<in> rf_sr \<and> tcb_at' (ctcb_ptr_to_tcb_ptr (tcb s')) s
-    \<and> (n < ucast tcbCNodeEntries) \<longrightarrow> s' \<Turnstile>\<^sub>c cte_Ptr (((ptr_val (tcb s') && 0xFFFFFE00)
-        + n * 0x10))"
-  apply (clarsimp)
-  apply (rule c_guard_abs_cte[rule_format], intro conjI, simp_all)
-  apply (simp add: cte_at'_obj_at', rule disjI2)
-  apply (frule ptr_val_tcb_ptr_mask)
-  apply (rule_tac x="n * 0x10" in bexI)
-   apply (simp add: mask_def)
-  apply (simp add: word_less_nat_alt tcbCNodeEntries_def tcb_cte_cases_def)
-  apply (case_tac "unat n", simp_all add: unat_eq_of_nat, rename_tac n_rem)
-  apply (case_tac "n_rem", simp_all add: unat_eq_of_nat, (rename_tac n_rem)?)+
-  done
-
-lemmas ccorres_move_c_guard_tcb_ctes [corres_pre] = ccorres_move_c_guards  [OF c_guard_abs_tcb_ctes]
 
 lemma cvariable_array_map_const_add_map_option:
   "cvariable_array_map_relation m (\<lambda>_. n)
         = cvariable_array_map_relation (map_option f o m) (\<lambda>_. n)"
   by (simp add: cvariable_array_map_relation_def fun_eq_iff)
-
-lemma c_guard_abs_pte:
-  "\<forall>s s'. (s, s') \<in> rf_sr \<and> pte_at' (ptr_val p) s \<and> True
-              \<longrightarrow> s' \<Turnstile>\<^sub>c (p :: pte_C ptr)"
-  apply (clarsimp simp: typ_at_to_obj_at_arches)
-  apply (drule obj_at_ko_at', clarsimp)
-  apply (erule cmap_relationE1[OF rf_sr_cpte_relation])
-   apply (erule ko_at_projectKO_opt)
-  apply (fastforce intro: typ_heap_simps)
-  done
-
-lemmas ccorres_move_c_guard_pte = ccorres_move_c_guards [OF c_guard_abs_pte]
-
-lemma array_assertion_abs_pt:
-  "\<forall>s s'. (s, s') \<in> rf_sr \<and> (page_table_at' pd s)
-        \<and> (n s' \<le> 2 ^ (ptBits - 2) \<and> (x s' \<noteq> 0 \<longrightarrow> n s' \<noteq> 0))
-    \<longrightarrow> (x s' = 0 \<or> array_assertion (pte_Ptr pd) (n s') (hrs_htd (t_hrs_' (globals s'))))"
-  apply (intro allI impI disjCI2, clarsimp)
-  apply (drule(1) page_table_at_rf_sr, clarsimp)
-  apply (erule clift_array_assertion_imp, simp_all add: ptBits_def pageBits_def)
-  apply (rule_tac x=0 in exI, simp)
-  done
-
-lemmas ccorres_move_array_assertion_pt
-    = ccorres_move_array_assertions[OF array_assertion_abs_pt]
-
-lemma c_guard_abs_pde:
-  "\<forall>s s'. (s, s') \<in> rf_sr \<and> pde_at' (ptr_val p) s \<and> True
-              \<longrightarrow> s' \<Turnstile>\<^sub>c (p :: pde_C ptr)"
-  apply (clarsimp simp: typ_at_to_obj_at_arches)
-  apply (drule obj_at_ko_at', clarsimp)
-  apply (erule cmap_relationE1[OF rf_sr_cpde_relation])
-   apply (erule ko_at_projectKO_opt)
-  apply (fastforce intro: typ_heap_simps)
-  done
-
-lemmas ccorres_move_c_guard_pde = ccorres_move_c_guards [OF c_guard_abs_pde]
-
-lemma array_assertion_abs_pd:
-  "\<forall>s s'. (s, s') \<in> rf_sr \<and> (page_directory_at' pd s)
-        \<and> (n s' \<le> 2 ^ (pdBits - 2) \<and> (x s' \<noteq> 0 \<longrightarrow> n s' \<noteq> 0))
-    \<longrightarrow> (x s' = 0 \<or> array_assertion (pde_Ptr pd) (n s') (hrs_htd (t_hrs_' (globals s'))))"
-  apply (intro allI impI disjCI2, clarsimp)
-  apply (drule(1) page_directory_at_rf_sr, clarsimp)
-  apply (erule clift_array_assertion_imp, simp_all add: pdBits_def pageBits_def)
-  apply (rule_tac x=0 in exI, simp)
-  done
-
-lemmas ccorres_move_array_assertion_pd
-    = ccorres_move_array_assertions[OF array_assertion_abs_pd]
-
-lemma move_c_guard_ap:
-  "\<forall>s s'. (s, s') \<in> rf_sr \<and> asid_pool_at' (ptr_val p) s \<and> True
-              \<longrightarrow> s' \<Turnstile>\<^sub>c (p :: asid_pool_C ptr)"
-  apply (clarsimp simp: typ_at_to_obj_at_arches)
-  apply (drule obj_at_ko_at', clarsimp)
-  apply (erule cmap_relationE1 [OF rf_sr_cpspace_asidpool_relation])
-   apply (erule ko_at_projectKO_opt)
-  apply (fastforce intro: typ_heap_simps)
-  done
-
-lemmas ccorres_move_c_guard_ap = ccorres_move_c_guards [OF move_c_guard_ap]
-
-lemma array_assertion_abs_irq:
-  "\<forall>s s'. (s, s') \<in> rf_sr \<and> True
-        \<and> (n s' \<le> 256 \<and> (x s' \<noteq> 0 \<longrightarrow> n s' \<noteq> 0))
-    \<longrightarrow> (x s' = 0 \<or> array_assertion (intStateIRQNode_' (globals s'))
-            (n s') (hrs_htd (t_hrs_' (globals s'))))"
-  apply (intro allI impI disjCI2)
-  apply (clarsimp simp: rf_sr_def cstate_relation_def Let_def)
-  apply (clarsimp simp: h_t_valid_clift_Some_iff)
-  apply (erule clift_array_assertion_imp, (simp add: exI[where x=0])+)
-  done
-
-lemmas ccorres_move_array_assertion_irq
-    = ccorres_move_array_assertions [OF array_assertion_abs_irq]
 
 lemma ccorres_move_const_guard:
   "ccorres_underlying rf_sr Gamm rrel xf arrel axf P P' hs m c
@@ -1678,10 +1779,6 @@ lemma liftM_exs_valid:
   apply (erule bexI [rotated])
   apply simp
   done
-
-lemma ceqv_trans:
-  "\<lbrakk> ceqv \<Gamma> xf' rv' t t' c c'; ceqv \<Gamma> xf' rv' t t' c' c'' \<rbrakk> \<Longrightarrow> ceqv \<Gamma> xf' rv' t t' c c''"
-  unfolding ceqv_def by auto
 
 lemma ceqv_remove_eqv_skip:
   "\<lbrakk> \<And>s. ceqv \<Gamma> xf () s s' b Skip \<rbrakk> \<Longrightarrow>
@@ -1737,6 +1834,13 @@ lemma finish_ceqv_Seq_Skip_cases:
   "(y = Skip \<and> (x ;; y) = z \<or> (x ;; y) = (x ;; y))"
   by simp_all
 
+lemma semantic_equiv_IF_True:
+  "semantic_equiv G s s'  (IF True THEN c ELSE c' FI) c"
+  apply (simp add: semantic_equiv_seq_assoc_eq[symmetric])
+  by (auto simp: semantic_equiv_def2 elim!: exec_Normal_elim_cases intro: exec.intros)
+
+lemmas ccorres_IF_True = ccorres_semantic_equiv[OF semantic_equiv_IF_True]
+
 ML {*
 fun tac ctxt =
   resolve_tac ctxt [@{thm ccorres_abstract[where xf'="\<lambda>s. ()"]}] 1
@@ -1745,7 +1849,7 @@ fun tac ctxt =
             ceqv_Seq_Skip_cases ceqv_Guard_UNIV[THEN iffD2]
             Guard_ceqv[OF impI, OF refl] ceqv_refl
             finish_ceqv_Seq_Skip_cases} 1
-        ORELSE (resolve_tac ctxt [@{thm xpresI}] THEN' simp_tac (ctxt |> Splitter.del_split @{thm "split_if"})) 1
+        ORELSE (resolve_tac ctxt [@{thm xpresI}] THEN' simp_tac (ctxt |> Splitter.del_split @{thm "if_split"})) 1
     ))
   THEN simp_tac (put_simpset HOL_basic_ss ctxt addsimps @{thms com.case}) 1
 *}
