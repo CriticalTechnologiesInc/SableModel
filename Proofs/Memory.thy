@@ -33,8 +33,8 @@ lemma[dest, intro]: "mem_node_C_guard p \<Longrightarrow> c_guard p"
     
 definition
   liftC :: "('c \<Rightarrow> 'a) \<Rightarrow> ('c \<Rightarrow> bool) \<Rightarrow> ('a \<Rightarrow> bool)"
-where
-  "liftC st P \<equiv> \<lambda>s. \<forall>g. s = st g \<longrightarrow> P g"
+  where
+    "liftC st P \<equiv> \<lambda>s. \<forall>g. s = st g \<longrightarrow> P g"
     
 lemma hoare_liftC_wp[wp]:
   "\<lbrace>P\<rbrace> m \<lbrace>\<lambda>r s. \<forall>t. st s = t \<longrightarrow> Q r t\<rbrace> \<Longrightarrow> \<lbrace>liftC st P\<rbrace> exec_concrete st m \<lbrace>Q\<rbrace>"
@@ -65,7 +65,7 @@ definition nodeFree :: "globals \<Rightarrow> mem_node_C ptr \<Rightarrow> bool"
     (let size = node_size_masked s node in
     \<forall>p \<in> {ptr_val (node +\<^sub>p 1)..+unat size * SZ_mem_node}.
       snd (hrs_htd (t_hrs_' s) p) = Map.empty)"
-
+    
 text \<open>the nodeValid predicate defines the constraints on each node that alloc()
       must preserve. It is not defined in the most straightforward fashion possible, but it is
       valid nonetheless\<close>    
@@ -80,7 +80,7 @@ definition nodeValid :: "globals \<Rightarrow> mem_node_C ptr \<Rightarrow> bool
    unat size * 8 < 2 ^ LENGTH(32) \<and>
    (occupied = 0 \<longrightarrow> nodeFree s node) \<and> 
    (next \<noteq> NULL \<longrightarrow> next > node \<and> next \<ge> (node +\<^sub>p 1)) )"
-       
+    
 lemma nodeValid_node_node_size_upper_bound:
   "nodeValid s node \<Longrightarrow>  
    unat_ptr node + 8 + unat ((node_size_masked s node) * 8) \<le> 2 ^ LENGTH(32)"
@@ -95,7 +95,7 @@ lemma nodeValid_node_node_size_upper_bound':
   apply (drule nodeValid_node_node_size_upper_bound)
   unfolding ptr_add_def  
   by unat_arith 
-
+    
 lemma nodeValid_node_node_size_upper_bound2:
   "nodeValid s node \<Longrightarrow>  
    unat_ptr node + 8 + unat (node_size_masked s node) * 8 \<le> 2 ^ LENGTH(32)"
@@ -104,9 +104,9 @@ lemma nodeValid_node_node_size_upper_bound2:
    apply argo
   unfolding nodeValid_def Let_def
   apply clarify
-    apply (simp only:eight_eq_eight[THEN sym])
+  apply (simp only:eight_eq_eight[THEN sym])
   apply (subst (asm) unat_mult_lem) 
-    by argo
+  by argo
     
 lemma nodeValid_node_node_size_upper_bound2':
   "nodeValid s node \<Longrightarrow>  
@@ -126,17 +126,17 @@ lemma nodeValid_node_size_upper_bound:
   apply (subgoal_tac "ptr_val node \<noteq> 0") 
   using word_neq_0_conv apply blast
   by (metis ptr.exhaust ptr_val.ptr_val_def)
-
+    
 text \<open>This is essentially the definition of the heap invariants that alloc() must preserve.
       It requires all the nodes in the linked list to be valid\<close>
 function 
   nodesValid :: "globals \<Rightarrow> mem_node_C ptr \<Rightarrow> bool" 
-where
- "\<not> (nodeValid s heap_node) \<Longrightarrow> nodesValid s heap_node = False"
-|"nodeValid s heap_node \<and> node_next s heap_node = NULL \<Longrightarrow> nodesValid s heap_node = True"
-|"nodeValid s heap_node \<and> node_next s heap_node \<noteq> NULL \<Longrightarrow> nodesValid s heap_node =
+  where
+    "\<not> (nodeValid s heap_node) \<Longrightarrow> nodesValid s heap_node = False"
+  |"nodeValid s heap_node \<and> node_next s heap_node = NULL \<Longrightarrow> nodesValid s heap_node = True"
+  |"nodeValid s heap_node \<and> node_next s heap_node \<noteq> NULL \<Longrightarrow> nodesValid s heap_node =
       nodesValid s (node_next s heap_node)" 
-     apply auto by blast
+        apply auto by blast
 termination
   apply (relation "measure (\<lambda> (s,heap). 2 ^ 32 - unat_ptr heap)")
    apply auto
@@ -150,9 +150,9 @@ lemma nodesValid_def': "nodesValid s heap_node =
     nodeValid s heap_node \<and> (next \<noteq> NULL \<longrightarrow> nodesValid s next))"
   unfolding Let_def
   using nodesValid.simps by blast
-  
+    
 definition heap_invs :: "globals \<Rightarrow> unit ptr \<Rightarrow> bool"
-where "heap_invs s heap_node \<equiv> nodesValid s (ptr_coerce heap_node)"
+  where "heap_invs s heap_node \<equiv> nodesValid s (ptr_coerce heap_node)"
     
 lemma nodesValid_nodeValid: "nodesValid s n \<Longrightarrow> nodeValid s n"
   apply(subst (asm) nodesValid_def') unfolding Let_def by auto
@@ -168,7 +168,7 @@ lemma heap_invs_not_null :"heap_invs s heap_node \<Longrightarrow> heap_node \<n
 lemma nodesValid_not_next_null:
   "nodesValid s node \<Longrightarrow> \<not> nodesValid s (node_next s node) \<Longrightarrow> (node_next s node) = NULL"
   using nodesValid.elims by auto 
-
+    
 text \<open>reachable is a predicate returning true when node `to` is reachable from node `node` in the
       linked list. Its definition is split into multiple cases to make proving totality of the
       function possible, in addition the next node of each node must be at a higher address than
@@ -187,7 +187,7 @@ termination
   apply (relation "measure (\<lambda> (s,node,to).2 ^ 32 + unat_ptr to - unat_ptr node)")
    apply (auto simp: ptr_less_simp ptr_le_simp)
   by unat_arith auto
-      
+    
 lemma self_reachable: "n \<noteq> NULL \<Longrightarrow> reachable s n n"
   by auto
     
@@ -229,7 +229,7 @@ lemma reachable_trans2[rule_format]:
    reachable s node (node_next s to)"
   apply (rule_tac ?a0.0=s and ?a1.0=node and ?a2.0=to in  reachable.induct)
   by auto
-
+    
 text \<open> the memory outside an updated linked list node remains untouched \<close>
 lemma updated_node_hrs_the_same_elsewhere:
   assumes x_val:"x \<notin> ptr_span p"
@@ -239,7 +239,7 @@ proof-
   have x[simp] : "ptr_val ?xptr = x" by simp
   hence "ptr_span p \<inter> {ptr_val ?xptr..+size_of TYPE(8 word)} = {}"
     apply simp 
-      using intvl_Suc x_val by auto
+    using intvl_Suc x_val by auto
   hence "\<forall> h. h_val (heap_update p new_node h) ?xptr = h_val h ?xptr" 
     using h_val_update_regions_disjoint by blast
   hence "\<forall> h. (heap_update p new_node h)  x =  h x" 
@@ -252,7 +252,7 @@ proof-
     apply(simp split:prod.split)
     done
 qed
-    
+  
 lemma dobule_update_heaps_eq_before:
   assumes "x < ptr_val p" and "x < ptr_val q"
     and "c_null_guard p" and "c_null_guard q"
@@ -274,7 +274,7 @@ proof-
     using `hrs_the_same_at s ?halfway_s x`
     by simp
 qed
-
+  
 text \<open>This function returns all the nodes in path from node `node` to node `to` (excluding `to`).
       Each node in the path must be at a higher address than its previous node. In addition to 
       being a reflection of the heap allocator implementation, this requirement makes the path 
@@ -339,7 +339,7 @@ lemma p_in_path_l_next[rule_format]:
   "p \<in> set (path s node to) \<longrightarrow> node < (node_next s p)"
   apply (rule_tac ?a0.0=s and ?a1.0=node and ?a2.0=to in path.induct)
   by auto
-
+    
 text \<open>if a valid node is at the last possible place in the address space (2 ^ 32 - 8),
       then it must have size 0\<close>
 lemma nodeValid_edge_of_addr_space:
@@ -366,7 +366,7 @@ proof -
       by unat_arith auto
   } thus ?thesis by fast
 qed
-
+  
 text \<open> if the footprint of a node, and the heap memory corresponding to the node 
       in two states are the same, and the node is valid in one state, 
       then it is valid in the other state as well \<close>  
@@ -434,12 +434,12 @@ proof-
   with `nodeValid s node` c1 show ?thesis
     using hrs_the_same_imp_nodeValid by presburger
 qed
-
+  
 lemma nodesValid_trans_back: "nodeValid s node \<Longrightarrow> 
     nodesValid s (node_next s node) \<Longrightarrow>
     nodesValid s node"
   by(subst nodesValid_def', simp)
-
+    
 lemma nodesValid_reachable_imp_nodesValid: 
   "reachable s fst_node node \<Longrightarrow>
    nodesValid s fst_node \<Longrightarrow>  
@@ -477,7 +477,7 @@ proof-
   }
   ultimately show "nodesValid s node" by auto 
 qed
-
+  
 lemma nodesValid_reachable_imp_next_reachable: 
   "reachable s fst_node node \<Longrightarrow>
    nodesValid s fst_node \<Longrightarrow>    
@@ -504,7 +504,7 @@ proof-
   }
   ultimately show "reachable s fst_node (node_next s node)" by argo
 qed      
-
+  
   
 lemma nodesValid_reachable_imp_nodeValid: 
   "nodesValid s heap_node \<Longrightarrow> 
@@ -513,7 +513,7 @@ lemma nodesValid_reachable_imp_nodeValid:
    nodeValid s node"
   apply (drule nodesValid_reachable_imp_nodesValid)
   by assumption+ (meson nodesValid_def')
-
+    
 lemma heaps_eq_nodesValid_reachable_imp_paths_eq_reachable[rule_format]:
   "(\<forall> p . p \<ge> ptr_val fst_node \<and> p < ptr_val to \<longrightarrow> hrs_the_same_at  s s' p) \<longrightarrow>
    nodesValid s fst_node \<longrightarrow>
@@ -522,26 +522,26 @@ lemma heaps_eq_nodesValid_reachable_imp_paths_eq_reachable[rule_format]:
    path s fst_node to = path s' fst_node to \<and> reachable s' fst_node to" 
   apply (rule_tac ?a0.0=s and ?a1.0=fst_node and ?a2.0=to in  path.induct)    
    apply auto[1]
-       apply (frule nodesValid_nodeValid)
-    apply (frule reachable_helper1)
-         apply auto[3]
-       apply (rule path.simps(1)[THEN sym])
-       apply auto[1]
-      apply (rule_tac P="node = to" in split_goal)
+      apply (frule nodesValid_nodeValid)
+      apply (frule reachable_helper1)
+        apply auto[3]
+      apply (rule path.simps(1)[THEN sym])
+      apply auto[1]
+     apply (rule_tac P="node = to" in split_goal)
       apply auto[1]
   using reachable_helper1 apply blast
     apply (rule_tac P="node = to" in split_goal)
-    apply auto[1]
-    apply (rule path.simps(1)[THEN sym])
-    apply auto[1]
+     apply auto[1]
+     apply (rule path.simps(1)[THEN sym])
+     apply auto[1]
     apply clarify
-      apply (frule reachable_next_le_to)
+    apply (frule reachable_next_le_to)
       apply auto[3]
-    apply (metis (full_types) less_irrefl less_le_trans reachable.simps(2) reachable_next_le_to)
+   apply (metis (full_types) less_irrefl less_le_trans reachable.simps(2) reachable_next_le_to)
 proof clarify    
   fix s node to
   assume ih:
-      "(\<forall>p. ptr_val (node_next s node) \<le> p \<and> p < ptr_val to \<longrightarrow> hrs_the_same_at s s' p) \<longrightarrow>
+    "(\<forall>p. ptr_val (node_next s node) \<le> p \<and> p < ptr_val to \<longrightarrow> hrs_the_same_at s s' p) \<longrightarrow>
        nodesValid s (node_next s node) \<longrightarrow>
        to \<noteq> NULL \<longrightarrow>
        reachable s (node_next s node) to \<longrightarrow>
@@ -560,8 +560,8 @@ proof clarify
       `node_next s node \<le> to`[THEN ptr_le_simp[THEN iffD1]]
     by auto
   have "node_next s node \<noteq> NULL" using `node < node_next s node`[THEN ptr_less_simp[THEN iffD1]] 
-      by auto
-        
+    by auto
+      
   have "(\<forall>p. ptr_val (node_next s node) \<le> p \<and> p < ptr_val to \<longrightarrow> hrs_the_same_at s s' p)"
     using `\<forall>p. ptr_val node \<le> p \<and> p < ptr_val to \<longrightarrow> hrs_the_same_at s s' p`
       `node < node_next s node`[THEN ptr_less_simp[THEN iffD1]]
@@ -582,7 +582,7 @@ proof clarify
   have "nodeValid s node" using `nodesValid s node`
       nodesValid_nodeValid by blast  
   have "0 \<notin> ptr_span node" using `nodeValid s node`
-      unfolding nodeValid_def Let_def c_guard_def c_null_guard_def by blast
+    unfolding nodeValid_def Let_def c_guard_def c_null_guard_def by blast
   have "unat_ptr node + 8 \<le> unat_ptr (node_next s node)" 
     using `nodeValid s node` `(node_next s node) \<noteq> NULL`
     unfolding nodeValid_def Let_def by simp  
@@ -599,14 +599,14 @@ proof clarify
     using `node_val s node = node_val s' node` by argo
   hence "node_next s' node \<le> to" and "node < node_next s' node"
     using `node_next s node \<le> to` `node < node_next s node` by argo+
-  
+      
   have 1:"path s node to = node # (path s (node_next s node) to)"
     using `node_next s node \<le> to` `node < node_next s node` \<open>node \<noteq> NULL\<close>
     using sable_isa.path.simps(2) by blast
   have 2:"path s' node to = node # (path s' (node_next s' node) to)"
     using `node_next s' node \<le> to` `node < node_next s' node` \<open>node \<noteq> NULL\<close>
     using sable_isa.path.simps(2) by blast
-  
+      
   have "path s (node_next s node) to = path s' (node_next s' node) to"
     using path_next_eq `node_next s node = node_next s' node` by argo
   hence "path s node to = path s' node to"
@@ -621,7 +621,7 @@ proof clarify
   show "path s node to = path s' node to \<and> reachable s' node to"  
     by argo
 qed
-    
+  
 lemma heaps_eq_nodesValid_reachable_imp_paths_eq[rule_format]:
   "(\<forall> p . p \<ge> ptr_val fst_node \<and> p < ptr_val to \<longrightarrow> hrs_the_same_at  s s' p) \<Longrightarrow>
    nodesValid s fst_node \<Longrightarrow>
@@ -629,15 +629,15 @@ lemma heaps_eq_nodesValid_reachable_imp_paths_eq[rule_format]:
    reachable s fst_node to \<Longrightarrow>
    path s fst_node to = path s' fst_node to" 
   using heaps_eq_nodesValid_reachable_imp_paths_eq_reachable by presburger
-
+    
 lemma heaps_eq_nodesValid_reachable_imp_reachable:
-   "reachable s node to \<Longrightarrow>
+  "reachable s node to \<Longrightarrow>
     nodesValid s node \<Longrightarrow>
     \<forall>p . p \<ge> ptr_val node \<and> p < ptr_val to \<longrightarrow> hrs_the_same_at s s' p \<Longrightarrow>
     to \<noteq> NULL \<Longrightarrow>
     reachable s' node to" 
   using heaps_eq_nodesValid_reachable_imp_paths_eq_reachable by presburger 
-        
+    
 lemma l11:"((x::word32) || (scast (y::  32 signed word))) && (scast (~~y)) = x && (scast (~~y))"
   apply (subst word_ao_dist)
 proof -
@@ -657,7 +657,7 @@ proof -
     using scast_NOT_simp by auto
   thus ?thesis using assms by (simp add: mask_eq_0_eq_x)
 qed
-
+  
 text \<open>If a node n is in the path of another node fst_node, and nodesValid holds
       for fst_node, then n must be a valid node \<close>
 lemma node_in_path_nodesValid_imp_nodeValid_node[rule_format]:
@@ -669,7 +669,7 @@ lemma node_in_path_nodesValid_imp_nodeValid_node[rule_format]:
     apply (erule nodesValid_nodeValid)+
   apply (frule nodesValid_not_next_null)
   by auto
-
+    
 text \<open> if there is a node 'to' reachable from node 'node', then 'node' must be in its
       path to 'to', in other words, its path is not empty\<close>
 lemma node_reachable_in_path[rule_format]:
@@ -786,7 +786,7 @@ next
     using nodeValid_heaps_eq_imp_nodeValid by blast
   ultimately show "nodesValid s' heap" using nodesValid_trans_back by fast
 qed 
-
+  
 text \<open>if nodesValid holds for 'node', and all the nodes in the path from
       'heap' to 'node' are valid, then nodesValid holds for 'heap'\<close>
 lemma path_nodeValid_reachable_imp_nodesValid[rule_format]:
@@ -804,16 +804,16 @@ lemma path_nodeValid_reachable_imp_nodesValid[rule_format]:
        apply (metis reachable_helper1 sable_isa.nodesValid_not_null)
   using reachable_helper3 apply blast
      apply (metis dual_order.strict_iff_order order_less_le_trans nodesValid_not_null
-            reachable.simps(4) reachable_helper2)
+      reachable.simps(4) reachable_helper2)
   using reachable_helper3 apply blast
    apply (metis dual_order.strict_iff_order order_less_le_trans reachable_helper2
-          nodesValid_not_null reachable.simps(4))   
+      nodesValid_not_null reachable.simps(4))   
   apply auto
    apply (frule node_reachable_in_path)
      apply auto
    apply (frule nodesValid_not_null, auto)
   using sable_isa.nodesValid_def' unfolding Let_def by blast
-   
+    
 lemma nodeValid_next_val: "nodeValid s node \<Longrightarrow>
   node_next s node \<noteq> NULL \<Longrightarrow>
   unat_ptr (node_next s node) \<ge> unat_ptr node + 8 +  unat ((node_size_masked s node) * 8)"
@@ -869,7 +869,9 @@ qed
 lemma OCC_FLG_neg : "(scast (~~ MEM_NODE_OCCUPIED_FLAG) ::32 word) = ~~ scast MEM_NODE_OCCUPIED_FLAG"
   by (metis (no_types) mask_eq_0_eq_x l11 mask_sw32_eq_0_eq_x word_bw_comms(1) word_log_esimps(7) 
       word_log_esimps(9) word_not_not)    
+ 
 
+    
 text \<open>This lemma states that alloc() preserves the invariants. As the size of this proof
       suggests, most of the verification effort of alloc() was spent proving this lemma. \<close>    
 lemma alloc'_invs:
@@ -883,41 +885,29 @@ lemma alloc'_invs:
         'wp' will process the loop, and keeps the invariants as preconditions after the loop is done.
          \<close>
   apply (subst whileLoop_add_inv 
-      [where I="\<lambda> (n,r) s. heap_invs s heap \<and> reachable s (ptr_coerce heap) n
-                  \<and> (r=0 \<longrightarrow> (n = NULL \<or> ((size_bytes >> 3) + 1
-                        \<le> size_C (h_val (hrs_mem (t_hrs_' s)) n) && scast (~~ OCC_FLG))
-                     \<and> size_C (h_val (hrs_mem (t_hrs_' s)) n) && scast OCC_FLG = 0))" 
+      [where I="\<lambda> (n,r) s. heap_invs s heap \<and>
+                           reachable s (ptr_coerce heap) n \<and> 
+                           (r=0 \<longrightarrow> (n = NULL \<or> ((size_bytes >> 3) + 1 \<le> node_size_masked s n) \<and> 
+                           node_is_occupied s n = 0))" 
         and M="\<lambda> ((n,y),s). ptr_val n"])
-  apply (wp )
+  apply (wp)
       prefer 5
-    apply assumption
+      apply assumption
      prefer 4
      apply (simp add: size_bytes_g0)
      apply (rule return_wp) 
   unfolding heap_invs_def
-    apply (auto)
-    
+    apply (auto)    
   text \<open>Applying auto breaks the proof into multiple subgoals, all of which except two are
         trivially discharged. We discharge the trivial ones here, and leave the two main 
-        subgoals for later.\<close>
-                    apply(drule c_guard_NULL, drule nodesValid_reachable_imp_next_reachable, auto)+  
-                 apply (drule one_mask_neg_MNOF_not_zero, solves simp)
-                apply(drule c_guard_NULL, drule nodesValid_reachable_imp_next_reachable, auto)+
-              apply (drule mask_sw32_eq_0_eq_x, solves simp)
-             apply(drule c_guard_NULL, frule nodesValid_reachable_imp_next_reachable, auto)+
-         apply (drule one_mask_neg_MNOF_not_zero, solves simp)
-        apply(drule c_guard_NULL, drule nodesValid_reachable_imp_next_reachable, auto)+
-      apply (frule mask_sw32_eq_0_eq_x, solves simp)
-     apply(drule c_guard_NULL, drule nodesValid_reachable_imp_next_reachable, auto)    
-    prefer 3
-    apply (wp, auto)
-     apply (drule nodesValid_not_null, simp)
-     apply (drule one_mask_neg_MNOF_not_zero, auto)
-    apply (drule nodesValid_not_null, simp)
-    apply (frule mask_sw32_eq_0_eq_x, solves simp)
-   apply (frule nodesValid_not_null, simp)
+        subgoals for later.\<close>  
     
-text \<open>This subgoal corresponds to the case where a free slot in the heap of exactly the 
+            prefer 11
+            apply (wp, auto)
+           apply(drule c_guard_NULL, drule nodesValid_reachable_imp_next_reachable, 
+                 solves auto, solves auto, solves auto)+
+    
+  text \<open>This subgoal corresponds to the case where a free slot in the heap of exactly the 
       right size has been found \<close>
 proof -
   fix a::"mem_node_C ptr"
@@ -968,7 +958,7 @@ proof -
     using  `nodeValid s a`
     apply (subst `node_next ?new_s a = node_next s a`)+ by (meson nodeValid_def)     
   ultimately have "nodeValid ?new_s a" unfolding nodeValid_def by presburger 
-  
+      
   have next_eq:"node_next ?new_s a = node_next s a" using updated_node_next by fast
       
   have hrs_the_same_except_a:"\<forall>p. p \<notin> ptr_span a \<longrightarrow> hrs_the_same_at s ?new_s p"
@@ -995,8 +985,8 @@ proof -
       apply simp apply (frule nodeValid_next_val) by auto
     ultimately have "\<forall> p. p \<ge> ptr_val (node_next s a) \<longrightarrow>  p \<notin> ptr_span a"
       apply clarify
-        apply(subgoal_tac "unat_ptr a + 8 \<le> unat p")
-       by auto unat_arith
+      apply(subgoal_tac "unat_ptr a + 8 \<le> unat p")
+      by auto unat_arith
         
     hence hrs_the_same_after_a:
       "\<forall> p. p \<ge> ptr_val (node_next s a) \<longrightarrow> hrs_the_same_at s ?new_s p"
@@ -1091,9 +1081,9 @@ proof -
       using `nodesValid ?new_s a` by simp
   }    
   ultimately show "nodesValid ?new_s ?heap_node" by fastforce
-     
+      
 next 
-text \<open>This subgoal corresponds to the case where the found slot in the heap is bigger than
+  text \<open>This subgoal corresponds to the case where the found slot in the heap is bigger than
       the requested size, and so a new free node must be created at the end of the allocated memory
       for the extra free space.\<close>
   fix a::"mem_node_C ptr"
@@ -1213,7 +1203,7 @@ text \<open>This subgoal corresponds to the case where the found slot in the hea
   have "unat (?node_size_masked * 8) = unat ?node_size_masked * 8"
     using `unat ?node_size_masked * 8 < 2 ^ LENGTH(32)`
     by (metis  eight_eq_eight unat_of_nat_eq word_arith_nat_mult)   
-            
+      
   {
     assume "?next \<noteq> NULL"
     hence "?next > a" using `?next \<noteq> NULL \<longrightarrow> ?next > a` by fast
@@ -1434,7 +1424,7 @@ text \<open>This subgoal corresponds to the case where the found slot in the hea
         by (simp add: sable_isa.nodeFree_def)
       with `unat (ptr_val ( a +\<^sub>p 1)) + unat ?node_size_masked * 8 \<le> 2 ^ LENGTH(32)`
       have 1:
-       "\<forall>p. p\<ge> ptr_val(a +\<^sub>p 1) \<and> unat p < unat_ptr(a +\<^sub>p 1) +unat ?node_size_masked *SZ_mem_node \<longrightarrow>
+        "\<forall>p. p\<ge> ptr_val(a +\<^sub>p 1) \<and> unat p < unat_ptr(a +\<^sub>p 1) +unat ?node_size_masked *SZ_mem_node \<longrightarrow>
                 snd (hrs_htd (t_hrs_' s) p) = Map.empty"
         by (simp add: intvl_no_overflow2) 
           
@@ -1449,7 +1439,7 @@ text \<open>This subgoal corresponds to the case where the found slot in the hea
         have "unat_ptr a + 8 + unat (((size_bytes >> 3) + 1) * 8) + 8 \<ge> 2 ^ LENGTH(32)"
           using `unat_ptr ?new_next + 8 \<ge> 2 ^ LENGTH(32)`
           apply (subst (asm)`unat_ptr a + 8 + unat(((size_bytes >> 3) + 1) * 8) =unat_ptr ?new_next`
-                 [THEN sym])
+              [THEN sym])
           by assumption
         hence "unat_ptr a + 8 + unat (((size_bytes >> 3) + 1) * 8) + 8 = 2 ^ LENGTH(32)"
           using `unat_ptr a + 8 + unat (((size_bytes >> 3) + 1) * 8) + 8 \<le> 2 ^ LENGTH(32)`
@@ -1534,7 +1524,7 @@ text \<open>This subgoal corresponds to the case where the found slot in the hea
         have "unat_ptr ?new_next = unat_ptr a + unat (2 + (size_bytes >>3)) * 8"
           apply (subst `unat (2 + (size_bytes >>3)) = 1 + unat ((size_bytes >>3) + 1)`)
           apply (subst `unat_ptr a + 8 + unat (((size_bytes >> 3) + 1) * 8) = unat_ptr ?new_next`
-                 [THEN sym])
+              [THEN sym])
           apply (subst `unat (((size_bytes >> 3) + 1) * 8) = unat ((size_bytes >> 3) + 1) * 8`) 
           by auto 
             
@@ -1677,7 +1667,7 @@ text \<open>This subgoal corresponds to the case where the found slot in the hea
   have "\<forall> p. p < ptr_val a \<longrightarrow> hrs_the_same_at s ?new_s p"
     apply clarify
     apply (rule dobule_update_heaps_eq_before) using new_next_g_a 
-      using `c_guard a` `c_guard ?new_next` unfolding c_guard_def 
+    using `c_guard a` `c_guard ?new_next` unfolding c_guard_def 
     by (auto simp:ptr_less_def' ptr_less_def)
   hence hrs_the_same_heap_to_a:
     "\<forall> p. p \<ge> ptr_val ?heap_node \<and> p < ptr_val a \<longrightarrow> hrs_the_same_at s ?new_s p"
@@ -1723,7 +1713,9 @@ text \<open>This subgoal corresponds to the case where the found slot in the hea
     by blast+
   thus "nodesValid ?new_s_real (ptr_coerce heap)" by auto
 qed  
-
+  
+  
+  
 text \<open>a helper theorem for alloc'_hoare, it proves the main goals for alloc'_hoare after it 
       has gone through wp. The main goals correspond to the two branches of alloc(), one where
       a free portion of exactly the correct size has been found, another where a free portion
@@ -1792,8 +1784,8 @@ proof -
     show "valid_simple_footprint (ptr_retyp ?ptrc (hrs_htd (t_hrs_' s))) (ptr_val ?ptrc)
           (typ_uinfo_t TYPE('a))"
       apply (rule TypHeapSimple.valid_simple_footprint_ptr_retyp) defer
-      apply (simp, metis Suc_le_eq mem_type_simps(3) size_of_def)
-      apply (simp add: size_of_tag)
+        apply (simp, metis Suc_le_eq mem_type_simps(3) size_of_def)
+       apply (simp add: size_of_tag)
     proof safe 
       fix k
       assume "k < size_td (typ_uinfo_t TYPE('a))"
@@ -1842,7 +1834,7 @@ proof -
     thus "c_null_guard (ptr_coerce (node +\<^sub>p 1):: 'a ptr)" unfolding c_null_guard_def by blast  
   qed
 qed
-
+  
 text \<open>This is the main theorem. It proves that given the heap_invs precondition, if the returned 
       pointer is not NULL, it is of the correct size, it is properly aligned with respect to the type the memory 
       is being allocated for, and it points to a previously free (untyped) portion of the heap\<close>  
@@ -1856,10 +1848,10 @@ lemma alloc'_hoare:
   unfolding alloc'_def Let_def 
   apply (simp add: h_val_field_from_bytes)
   apply (subst whileLoop_add_inv 
-      [where I="\<lambda> (n,r) s. heap_invs s heap_node  \<and> reachable s (ptr_coerce heap_node) n
-                  \<and> (r=0 \<longrightarrow> n = NULL \<or> ((size_bytes >> 3) + 1
-                     \<le> size_C (h_val (hrs_mem (t_hrs_' s)) n) && scast (~~ OCC_FLG))
-                  \<and> size_C (h_val (hrs_mem (t_hrs_' s)) n) && scast OCC_FLG = 0)" 
+      [where I="\<lambda> (n,r) s. heap_invs s heap_node \<and> 
+                           reachable s (ptr_coerce heap_node) n \<and> 
+                           (r=0 \<longrightarrow> n = NULL \<or> ((size_bytes >> 3) + 1 \<le> node_size_masked s n) \<and> 
+                           node_is_occupied s n = 0)" 
         and M="\<lambda> ((n,y),s). ptr_val n"])
   apply (wp fail'_wp)
       apply (simp add: `0 < size_bytes` h_val_id not_le)
@@ -1868,34 +1860,24 @@ lemma alloc'_hoare:
      prefer 2
      apply (erule iffD1[OF refl])
     apply (auto simp: `0 < size_bytes`)
-                    apply wp
-                    apply auto
+            apply wp
+            apply auto
   unfolding heap_invs_def
-                     apply (drule one_mask_neg_MNOF_not_zero, solves simp)
-                    apply (drule mask_sw32_eq_0_eq_x, solves auto)
-                   apply(drule nodesValid_reachable_imp_next_reachable, auto)
-                  apply(drule nodesValid_reachable_imp_next_reachable, auto)
-                 apply(drule nodesValid_reachable_imp_next_reachable, auto)
-                apply (drule one_mask_neg_MNOF_not_zero, solves simp)
-               apply(drule nodesValid_reachable_imp_next_reachable, auto)
-              apply(drule nodesValid_reachable_imp_next_reachable, auto)
-             apply (drule mask_sw32_eq_0_eq_x, solves auto)
-            apply(drule nodesValid_reachable_imp_next_reachable, auto)
            apply(drule nodesValid_reachable_imp_next_reachable, auto)
           apply(drule nodesValid_reachable_imp_next_reachable, auto)
          apply(drule nodesValid_reachable_imp_next_reachable, auto)
-  apply (drule one_mask_neg_MNOF_not_zero, solves simp)
+        apply(drule nodesValid_reachable_imp_next_reachable, auto)
+       apply(drule nodesValid_reachable_imp_next_reachable, auto)
   apply(drule nodesValid_reachable_imp_next_reachable, auto)
-  apply(drule nodesValid_reachable_imp_next_reachable, auto)    
-  apply (subst mask_sw32_eq_0_eq_x,  auto)
+  apply(drule nodesValid_reachable_imp_next_reachable, auto)
   apply(drule nodesValid_reachable_imp_next_reachable, auto)
     
   using n align apply (rule alloc'_hoare_helper, unfold heap_invs_def, auto)
   using n align apply (rule alloc'_hoare_helper, unfold heap_invs_def, auto) 
   done
     
-  
-(* lemma alloc_w32_safe: "\<lbrace>\<lambda>s. (liftC lift_global_heap (\<lambda>s. heap_invs s heap)) s\<rbrace>
+    
+    (* lemma alloc_w32_safe: "\<lbrace>\<lambda>s. (liftC lift_global_heap (\<lambda>s. heap_invs s heap)) s\<rbrace>
                        exec_concrete lift_global_heap (alloc' heap 4)
       \<lbrace>\<lambda>r s. ptr_val r \<noteq> 0 \<longrightarrow> is_valid_w32 s ((ptr_coerce r) :: (32 word) ptr)\<rbrace>!"
   apply (rule validNF)
