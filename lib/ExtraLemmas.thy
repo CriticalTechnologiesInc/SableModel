@@ -50,7 +50,7 @@ proof auto
   hence "(of_nat (nat i * size_of TYPE('a)) :: 32 word) = of_nat (nat k * size_of TYPE('a))"
     (is "of_nat ?L = of_nat ?R") by simp
   moreover have "((of_nat ?L :: 32 word) = of_nat ?R) = (?L = ?R)"
-    using size_i and size_k by (fastforce intro!: WordLemmaBucket.of_nat_inj)
+    using size_i and size_k by (fastforce intro!: Word_Lemmas.of_nat_inj)
   ultimately have "?L = ?R" by auto
   thus "i = k" using not_gr0 sz_nzero
     by (metis \<open>0 \<le> i\<close> \<open>0 \<le> k\<close> int_nat_eq mult.commute mult_cancel1)
