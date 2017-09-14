@@ -105,7 +105,7 @@ value "BOOL_rel False 14" (* False *)
 value "BOOL_rel False 0" (* True *)
 
 (* This relation is axiomatized *)
-consts DIGEST_rel :: "TPM.DIGEST \<Rightarrow> tdTPM_DIGEST_C \<Rightarrow> bool"
+(*consts DIGEST_rel :: "TPM.DIGEST \<Rightarrow> tdTPM_DIGEST_C \<Rightarrow> bool"*)
 
 (* This relation is axiomatized *)
 consts NONCE_rel :: "TPM.NONCE \<Rightarrow> tdTPM_NONCE_C \<Rightarrow> bool"
