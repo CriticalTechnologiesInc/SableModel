@@ -48,7 +48,7 @@ lemma hoare_liftC[intro]:
   "\<lbrace>P\<rbrace> m \<lbrace>\<lambda>r s. \<forall>t. st s = t \<longrightarrow> liftC st (Q r) t\<rbrace> \<Longrightarrow>
    \<lbrace>liftC st P\<rbrace> exec_concrete st m \<lbrace>\<lambda>r s. liftC st (Q r) s\<rbrace>"
   apply wp
-  sorry   
+  oops    
     
 lemma fail'_wp: "\<lbrace>\<lambda>x. True\<rbrace> fail' \<lbrace>Q\<rbrace>"
   unfolding fail'_def FUNCTION_BODY_NOT_IN_INPUT_C_FILE_def by wp
