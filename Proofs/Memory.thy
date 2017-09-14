@@ -132,10 +132,10 @@ text \<open>This is essentially the definition of the heap invariants that alloc
 function 
   nodesValid :: "globals \<Rightarrow> mem_node_C ptr \<Rightarrow> bool" 
 where
- "\<not> (nodeValid s heap) \<Longrightarrow> nodesValid s heap = False"
-|"nodeValid s heap \<and> node_next s heap = NULL \<Longrightarrow> nodesValid s heap = True"
-|"nodeValid s heap \<and> node_next s heap \<noteq> NULL \<Longrightarrow> nodesValid s heap =
-      nodesValid s (node_next s heap)" 
+ "\<not> (nodeValid s heap_node) \<Longrightarrow> nodesValid s heap_node = False"
+|"nodeValid s heap_node \<and> node_next s heap_node = NULL \<Longrightarrow> nodesValid s heap_node = True"
+|"nodeValid s heap_node \<and> node_next s heap_node \<noteq> NULL \<Longrightarrow> nodesValid s heap_node =
+      nodesValid s (node_next s heap_node)" 
      apply auto by blast
 termination
   apply (relation "measure (\<lambda> (s,heap). 2 ^ 32 - unat_ptr heap)")
@@ -145,23 +145,23 @@ termination
   by unat_arith auto
     
 text \<open>a simplified definition of nodesValid, equivalent to the real definition\<close>   
-lemma nodesValid_def': "nodesValid s heap =
-  (let next = (node_next s heap) in 
-    nodeValid s heap \<and> (next \<noteq> NULL \<longrightarrow> nodesValid s next))"
+lemma nodesValid_def': "nodesValid s heap_node =
+  (let next = (node_next s heap_node) in 
+    nodeValid s heap_node \<and> (next \<noteq> NULL \<longrightarrow> nodesValid s next))"
   unfolding Let_def
   using nodesValid.simps by blast
   
 definition heap_invs :: "globals \<Rightarrow> unit ptr \<Rightarrow> bool"
-where "heap_invs s heap \<equiv> nodesValid s (ptr_coerce heap)"
+where "heap_invs s heap_node \<equiv> nodesValid s (ptr_coerce heap_node)"
     
 lemma nodesValid_nodeValid: "nodesValid s n \<Longrightarrow> nodeValid s n"
   apply(subst (asm) nodesValid_def') unfolding Let_def by auto
     
 lemma nodesValid_not_null:
-  "nodesValid s heap \<Longrightarrow> heap \<noteq> NULL"
+  "nodesValid s heap_node \<Longrightarrow> heap_node \<noteq> NULL"
   by (meson c_guard_NULL_simp nodeValid_def nodesValid_def') 
     
-lemma heap_invs_not_null :"heap_invs s heap \<Longrightarrow> heap \<noteq> NULL" 
+lemma heap_invs_not_null :"heap_invs s heap_node \<Longrightarrow> heap_node \<noteq> NULL" 
   unfolding heap_invs_def
   apply (drule nodesValid_not_null) by auto
     
@@ -506,8 +506,11 @@ proof-
 qed      
 
   
-lemma nodesValid_reachable_imp_nodeValid: "nodesValid s heap \<Longrightarrow> reachable s  heap node
-      \<Longrightarrow> node \<noteq> NULL \<Longrightarrow> nodeValid s node"
+lemma nodesValid_reachable_imp_nodeValid: 
+  "nodesValid s heap_node \<Longrightarrow> 
+   reachable s heap_node node \<Longrightarrow> 
+   node \<noteq> NULL \<Longrightarrow> 
+   nodeValid s node"
   apply (drule nodesValid_reachable_imp_nodesValid)
   by assumption+ (meson nodesValid_def')
 
@@ -787,12 +790,12 @@ qed
 text \<open>if nodesValid holds for 'node', and all the nodes in the path from
       'heap' to 'node' are valid, then nodesValid holds for 'heap'\<close>
 lemma path_nodeValid_reachable_imp_nodesValid[rule_format]:
-  "nodeValid s heap \<longrightarrow>
-   (\<forall> p \<in> set (path s heap node). nodeValid s p) \<longrightarrow>
-   reachable s heap node \<longrightarrow>
+  "nodeValid s heap_node \<longrightarrow>
+   (\<forall> p \<in> set (path s heap_node node). nodeValid s p) \<longrightarrow>
+   reachable s heap_node node \<longrightarrow>
    nodesValid s node \<longrightarrow>
-   nodesValid s heap"
-  apply (rule_tac ?a0.0=s and ?a1.0=heap and ?a2.0=node in path.induct) 
+   nodesValid s heap_node"
+  apply (rule_tac ?a0.0=s and ?a1.0=heap_node and ?a2.0=node in path.induct) 
    apply (unfold nodeValid_def)[1] unfolding Let_def
    apply clarify
    apply (drule c_guard_NULL)
@@ -818,24 +821,24 @@ lemma nodeValid_next_val: "nodeValid s node \<Longrightarrow>
   by(simp split:if_split) 
     
 lemma nodesValid_heaps_eq_nodeValid_in_path: 
-  assumes "nodesValid s heap"
-    and hrs_the_same: "\<forall> p . p \<ge> ptr_val heap \<and> p < ptr_val to \<longrightarrow> hrs_the_same_at s s' p"
-    and "reachable s heap to"
+  assumes "nodesValid s heap_node"
+    and hrs_the_same: "\<forall> p . p \<ge> ptr_val heap_node \<and> p < ptr_val to \<longrightarrow> hrs_the_same_at s s' p"
+    and "reachable s heap_node to"
     and "to \<noteq> NULL"
-  shows "\<forall> n \<in> set (path s' heap to). nodeValid s' n"
+  shows "\<forall> n \<in> set (path s' heap_node to). nodeValid s' n"
 proof-  
-  have "path s heap to = path s' heap to"
-    using hrs_the_same `nodesValid s heap` `reachable s heap to` `to \<noteq> NULL`
+  have "path s heap_node to = path s' heap_node to"
+    using hrs_the_same `nodesValid s heap_node` `reachable s heap_node to` `to \<noteq> NULL`
     using heaps_eq_nodesValid_reachable_imp_paths_eq  by blast
   { fix n
-    assume n_in_path_s':"n \<in> set (path s' heap to)"    
-    hence n_in_path:"n \<in> set (path s heap to)" using `path s heap to = path s' heap to`
+    assume n_in_path_s':"n \<in> set (path s' heap_node to)"    
+    hence n_in_path:"n \<in> set (path s heap_node to)" using `path s heap_node to = path s' heap_node to`
       by argo
-    have "n \<ge> heap" using n_in_path 
+    have "n \<ge> heap_node" using n_in_path 
       using p_in_path_ge_node by blast
-    have "nodeValid s n" using n_in_path `nodesValid s heap` 
+    have "nodeValid s n" using n_in_path `nodesValid s heap_node` 
       using node_in_path_nodesValid_imp_nodeValid_node by blast
-    have c1:"\<forall> p . p\<ge> ptr_val n \<longrightarrow> p \<ge> ptr_val heap" using `n \<ge> heap` 
+    have c1:"\<forall> p . p\<ge> ptr_val n \<longrightarrow> p \<ge> ptr_val heap_node" using `n \<ge> heap_node` 
       apply(simp add: ptr_le_simp) 
       by fastforce
     have "node_next s n \<noteq> NULL" using n_in_path
@@ -1847,13 +1850,13 @@ lemma alloc'_hoare:
   fixes size_bytes :: "32 word"
   assumes align: "align_of TYPE('a) dvd align_of TYPE(mem_node_C)"
     and n: "size_of TYPE('a) \<le> unat size_bytes" and "0 < size_bytes"
-  shows "\<lbrace>\<lambda>s. heap_invs s heap\<rbrace> alloc' heap size_bytes
+  shows "\<lbrace>\<lambda>s. heap_invs s heap_node\<rbrace> alloc' heap_node size_bytes
        \<lbrace>\<lambda>r s. let ptr = (ptr_coerce r) :: ('a :: mem_type) ptr in
         ptr_val r \<noteq> 0 \<longrightarrow> heap_ptr_valid (ptr_retyp ptr (hrs_htd (t_hrs_' s))) ptr\<rbrace>"
   unfolding alloc'_def Let_def 
   apply (simp add: h_val_field_from_bytes)
   apply (subst whileLoop_add_inv 
-      [where I="\<lambda> (n,r) s. heap_invs s heap  \<and> reachable s (ptr_coerce heap) n
+      [where I="\<lambda> (n,r) s. heap_invs s heap_node  \<and> reachable s (ptr_coerce heap_node) n
                   \<and> (r=0 \<longrightarrow> n = NULL \<or> ((size_bytes >> 3) + 1
                      \<le> size_C (h_val (hrs_mem (t_hrs_' s)) n) && scast (~~ OCC_FLG))
                   \<and> size_C (h_val (hrs_mem (t_hrs_' s)) n) && scast OCC_FLG = 0)" 
