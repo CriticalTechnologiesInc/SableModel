@@ -2,7 +2,7 @@ theory Memory_ExtraLemmas
   imports
     "../AutoCorres/Impl"
     "../lib/ExtraLemmas"
-    "~/Isabelle2016-1/src/HOL/Library/LaTeXsugar"
+    "$ISABELLE_HOME/src/HOL/Library/LaTeXsugar"
     
 begin
   

@@ -4,7 +4,7 @@ theory Memory
     "../lib/ExtraLemmas"
     "./Memory_Nodes"
     "./Memory_ExtraLemmas"
-    "~/Isabelle2016-1/src/HOL/Library/LaTeXsugar"    
+    "$ISABELLE_HOME/src/HOL/Library/LaTeXsugar"    
 begin
 text \<open>This theory file proves correctness of the heap allocator's alloc() function.
       The required supporting definitions and lemmas come first, they are followed by a lemma
